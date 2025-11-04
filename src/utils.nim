@@ -1,4 +1,4 @@
-import naylib, math
+import raylib, math, random
 
 type
   BoundingBox3D* = object

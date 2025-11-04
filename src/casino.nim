@@ -1,4 +1,4 @@
-import naylib
+import raylib
 import utils, player
 import machines/roulette, machines/slots, machines/blackjack
 

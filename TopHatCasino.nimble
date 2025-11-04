@@ -8,4 +8,4 @@ bin           = @["main"]
 
 # Dependencies
 requires "nim >= 1.6.0"
-requires "naylib >= 4.5.0"
+requires "raylib >= 4.5.0"

@@ -1,4 +1,4 @@
-import naylib, math, random
+import raylib, math, random
 import ../utils, ../player, ../ui
 
 type

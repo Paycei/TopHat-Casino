@@ -1,4 +1,4 @@
-import naylib
+import raylib
 import player, casino, ui, utils
 import machines/roulette, machines/slots, machines/blackjack
 
@@ -47,7 +47,6 @@ proc update*(game: Game) =
     
     if distance < game.interactionDistance:
       # Draw interaction prompt
-      beginDrawing()
       clearBackground(Black)
       
       beginMode3D(game.player.camera)
@@ -64,8 +63,6 @@ proc update*(game: Game) =
       
       drawInteractionPrompt("Press [E] to play " & machineName)
       
-      endDrawing()
-      
       if isKeyPressed(E):
         game.activeMachine = case nearestMachine.machineType:
           of RouletteM: 0
@@ -75,7 +72,6 @@ proc update*(game: Game) =
         enableCursor()
     else:
       # Normal rendering
-      beginDrawing()
       clearBackground(Black)
       
       beginMode3D(game.player.camera)
@@ -84,11 +80,8 @@ proc update*(game: Game) =
       endMode3D()
       
       drawHUD(game.player)
-      
-      endDrawing()
   
   of InMachine:
-    beginDrawing()
     clearBackground(Black)
     
     beginMode3D(game.player.camera)
@@ -112,11 +105,8 @@ proc update*(game: Game) =
       game.state = Playing
       game.activeMachine = -1
       disableCursor()
-    
-    endDrawing()
   
   of Paused:
-    beginDrawing()
     clearBackground(Black)
     
     # Draw game in background
@@ -132,7 +122,7 @@ proc update*(game: Game) =
     drawRectangle(0, 0, screenWidth, screenHeight, fade(Black, 0.7))
     
     let title = "PAUSED"
-    let titleSize = 60
+    let titleSize: int32 = 60
     let titleWidth = measureText(title, titleSize)
     drawText(title, screenWidth div 2 - titleWidth div 2, 200, titleSize, Gold)
     
@@ -141,13 +131,11 @@ proc update*(game: Game) =
       "Q - Quit to Menu"
     ]
     
-    var yPos = 320
+    var yPos: int32 = 320
     for instr in instructions:
-      let width = measureText(instr, 30)
-      drawText(instr, screenWidth div 2 - width div 2, yPos, 30, White)
+      let width = measureText(instr, int32(30))
+      drawText(instr, screenWidth div 2 - width div 2, yPos, int32(30), White)
       yPos += 45
-    
-    endDrawing()
     
     if isKeyPressed(Escape):
       game.state = Playing

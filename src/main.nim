@@ -1,10 +1,10 @@
-import naylib, random
+import raylib, random
 import game
 
 const
   SCREEN_WIDTH = 1280
   SCREEN_HEIGHT = 720
-  TITLE = "Top Hat Casino 3D"
+  TITLE = "Top Hat Casino"
 
 proc main() =
   # Initialize random seed
@@ -19,7 +19,9 @@ proc main() =
   
   # Main game loop
   while not windowShouldClose():
+    beginDrawing()
     gameInstance.update()
+    endDrawing()
   
   # Cleanup
   closeWindow()
