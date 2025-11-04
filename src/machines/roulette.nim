@@ -1,4 +1,4 @@
-import naylib, math, random
+import raylib, math, random
 import ../utils, ../player, ../ui
 
 type
@@ -41,11 +41,8 @@ proc draw3D*(roulette: Roulette) =
   drawCylinder(wheelPos, 1.2, 1.2, 0.1, 32, DarkGray)
   
   # Inner spinning part with rotation
-  drawCylinderEx(
-    Vector3(x: wheelPos.x, y: wheelPos.y + 0.05, z: wheelPos.z),
-    Vector3(x: wheelPos.x, y: wheelPos.y + 0.06, z: wheelPos.z),
-    1.0, 1.0, 32, Red
-  )
+  let spinPos = Vector3(x: wheelPos.x, y: wheelPos.y + 0.05, z: wheelPos.z)
+  drawCylinder(spinPos, 1.0, 1.0, 0.01, 32, Red)
   
   # Center pin
   drawCylinder(

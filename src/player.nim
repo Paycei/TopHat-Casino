@@ -1,4 +1,4 @@
-import naylib, math
+import raylib, math
 import utils
 
 type
@@ -34,21 +34,21 @@ proc update*(player: Player, deltaTime: float) =
   let mouseDelta = getMouseDelta()
   let sensitivity = 0.003
   
-  player.yaw += mouseDelta.x * sensitivity
+  player.yaw -= mouseDelta.x * sensitivity
   player.pitch -= mouseDelta.y * sensitivity
   player.pitch = clamp(player.pitch, -1.5, 1.5)
   
   # Calculate forward and right vectors
   let forward = Vector3(
-    x: sin(player.yaw),
+    x: -sin(player.yaw),
     y: 0,
-    z: cos(player.yaw)
+    z: -cos(player.yaw)
   )
   
   let right = Vector3(
-    x: cos(player.yaw),
+    x: -cos(player.yaw),
     y: 0,
-    z: -sin(player.yaw)
+    z: sin(player.yaw)
   )
   
   # Movement
