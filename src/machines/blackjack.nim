@@ -58,14 +58,6 @@ proc calculateHandValue(hand: seq[Card]): int =
     result -= 10
     aces -= 1
 
-proc cardToString(card: Card): string =
-  if card.value == 11:
-    return "A" & card.suit
-  elif card.value == 10:
-    return "T" & card.suit
-  else:
-    return $card.value & card.suit
-
 proc newBlackjack*(pos: Vector3): Blackjack =
   result = Blackjack()
   result.position = pos
@@ -87,13 +79,10 @@ proc newBlackjack*(pos: Vector3): Blackjack =
   result.transitionTimer = 0.0
 
 proc draw3D*(blackjack: Blackjack) =
-  # --- Rotar 180° en Y para que mire hacia el jugador ---
   pushMatrix()
   translatef(blackjack.position.x, blackjack.position.y, blackjack.position.z)
   rotatef(180, 0, 1, 0)
   translatef(-blackjack.position.x, -blackjack.position.y, -blackjack.position.z)
-  
-  # Table with subtle animations
   let tableBob = sin(getTime() * 0.5) * 0.01
   let tablePos = Vector3(
     x: blackjack.position.x,
@@ -102,8 +91,6 @@ proc draw3D*(blackjack: Blackjack) =
   )
   drawCube(tablePos, 3.0, 0.2, 2.0, DarkGreen)
   drawCubeWires(tablePos, 3.0, 0.2, 2.0, Gold)
-  
-  # Table legs
   for ix in [-1, 1]:
     for iz in [-1, 1]:
       let legPos = Vector3(
@@ -112,8 +99,6 @@ proc draw3D*(blackjack: Blackjack) =
         z: tablePos.z + iz.float * 0.8
       )
       drawCube(legPos, 0.15, 1.0, 0.15, DarkBrown)
-  
-  # Animated chip stack based on bet
   if blackjack.chipStackHeight > 0.0:
     let chipPos = Vector3(
       x: tablePos.x,
@@ -129,29 +114,21 @@ proc draw3D*(blackjack: Blackjack) =
       )
       drawCylinder(stackPos, 0.15, 0.15, 0.04, 8, Gold)
       drawCylinderWires(stackPos, 0.15, 0.15, 0.04, 8, DarkGray)
-  
-  # Card placeholder spots with animated positions
   let pulse = if blackjack.pulseTimer > 0.0: 
                 sin(blackjack.pulseTimer * 10.0) * 0.05 + 1.0
               else: 1.0
-  
-  # Player cards area
   let cardPos1 = Vector3(
     x: tablePos.x - 0.5,
     y: tablePos.y + 0.11,
     z: tablePos.z
   )
   drawCube(cardPos1, 0.4 * pulse, 0.01, 0.6 * pulse, White)
-  
-  # Dealer cards area
   let cardPos2 = Vector3(
     x: tablePos.x + 0.5,
     y: tablePos.y + 0.11,
     z: tablePos.z
   )
   drawCube(cardPos2, 0.4, 0.01, 0.6, White)
-  
-  # Draw card representations as small cubes with slide animation
   for i, card in blackjack.playerHand:
     let slideIn = 1.0 - card.slideOffset
     let cardVisPos = Vector3(
@@ -176,12 +153,9 @@ proc draw3D*(blackjack: Blackjack) =
     
     let cardColor = if isHidden: Red else: White
     drawCube(cardVisPos, 0.12 * flipScale, 0.01, 0.18, cardColor)
-  
-  # --- Restaurar matriz ---
   popMatrix()
 
 proc update*(blackjack: Blackjack, deltaTime: float) =
-  # Update card slide animations
   for card in blackjack.playerHand.mitems:
     if card.slideOffset > 0.0:
       card.slideOffset -= deltaTime * 3.0
@@ -193,14 +167,10 @@ proc update*(blackjack: Blackjack, deltaTime: float) =
       card.slideOffset -= deltaTime * 3.0
       if card.slideOffset < 0.0:
         card.slideOffset = 0.0
-    
-    # Update flip animation for dealer's hidden card
     if not blackjack.dealerRevealed and card.flipProgress < 1.0:
       card.flipProgress += deltaTime * 2.0
       if card.flipProgress > 1.0:
         card.flipProgress = 1.0
-  
-  # Update chip stack animation
   let targetHeight = if blackjack.bet > 0: 
                        float(blackjack.bet div 10) 
                      else: 0.0
@@ -213,18 +183,12 @@ proc update*(blackjack: Blackjack, deltaTime: float) =
     blackjack.chipStackHeight -= deltaTime * 10.0
     if blackjack.chipStackHeight < targetHeight:
       blackjack.chipStackHeight = targetHeight
-  
-  # Update pulse timer
   if blackjack.pulseTimer > 0.0:
     blackjack.pulseTimer -= deltaTime
     if blackjack.pulseTimer < 0.0:
       blackjack.pulseTimer = 0.0
-  
-  # Update dealer think timer
   if blackjack.dealerThinkTimer > 0.0:
     blackjack.dealerThinkTimer -= deltaTime
-  
-  # Update transition timer
   if blackjack.transitionTimer > 0.0:
     blackjack.transitionTimer -= deltaTime
 
@@ -238,7 +202,6 @@ proc dealInitialCards(blackjack: Blackjack) =
   blackjack.dealTimer = 0.0
 
 proc dealNextCard(blackjack: Blackjack) =
-  # Deal cards one at a time with timing
   if blackjack.cardsToDeal > 0:
     var card = newCard()
     card.slideOffset = 1.0
@@ -463,20 +426,16 @@ proc play*(blackjack: Blackjack, player: Player): bool =
         messages.add("Lost: " & formatMoney(blackjack.bet))
     
     messages.add("")
-    
-    # Only allow exit when all money is awarded
     if blackjack.moneyAwardedSoFar >= blackjack.moneyToAward:
       messages.add("Press any key to continue...")
     else:
       messages.add("Awarding winnings...")
     
     drawMinigameUI("BLACKJACK", player, messages)
-    
-    # Only allow exit after money is fully awarded
-    if blackjack.moneyAwardedSoFar >= blackjack.moneyToAward and (isKeyPressed(Space) or isKeyPressed(Enter) or isKeyPressed(Escape)):
+    if blackjack.moneyAwardedSoFar >= blackjack.moneyToAward and getKeyPressed() != KeyboardKey.Null:
       blackjack.state = Betting
       blackjack.bet = 0
       blackjack.pulseTimer = 0.0
-      return true
+      return false
   
   return false

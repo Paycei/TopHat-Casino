@@ -1,8 +1,8 @@
-﻿# TopHat Casino 3D - Windows Installation Script
+﻿# TopHat CASINO - Windows Installation Script
 # PowerShell script to install all dependencies
 
 Write-Host "=====================================" -ForegroundColor Cyan
-Write-Host "  Top Hat Casino 3D - Installer" -ForegroundColor Yellow
+Write-Host "  TopHat CASINO - Installer" -ForegroundColor Yellow
 Write-Host "  Windows Setup Script" -ForegroundColor Yellow
 Write-Host "=====================================" -ForegroundColor Cyan
 Write-Host ""
