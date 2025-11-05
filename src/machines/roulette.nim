@@ -3,7 +3,10 @@ import ../utils, ../player, ../ui
 
 type
   RouletteState = enum
-    Idle, Anticipation, Spinning, Settling, Result
+    Idle, ChoosingBetType, ChoosingBetValue, Anticipation, Spinning, Settling, Result
+  
+  BetType = enum
+    BetNumber, BetRed, BetBlack, BetOdd, BetEven, BetHigh, BetLow
   
   Roulette* = ref object
     position*: Vector3
@@ -12,6 +15,7 @@ type
     state*: RouletteState
     selectedNumber*: int
     playerBet*: int
+    betType*: BetType
     betNumber*: int
     timer*: float
     moneyAwarded*: bool
@@ -25,6 +29,10 @@ type
     flashTimer*: float
     winGlow*: float
     bounceCount*: int
+    
+const
+  RED_NUMBERS = [1, 3, 5, 7, 9]
+  BLACK_NUMBERS = [2, 4, 6, 8]
 
 proc easeOutQuart(t: float): float =
   let t2 = 1.0 - t
@@ -32,6 +40,32 @@ proc easeOutQuart(t: float): float =
 
 proc easeInQuart(t: float): float =
   return t * t * t * t
+
+proc isWinningBet(betType: BetType, betNumber: int, resultNumber: int): bool =
+  case betType:
+  of BetNumber:
+    return resultNumber == betNumber
+  of BetRed:
+    return resultNumber in RED_NUMBERS
+  of BetBlack:
+    return resultNumber in BLACK_NUMBERS
+  of BetOdd:
+    return resultNumber > 0 and resultNumber mod 2 == 1
+  of BetEven:
+    return resultNumber > 0 and resultNumber mod 2 == 0
+  of BetHigh:
+    return resultNumber >= 5
+  of BetLow:
+    return resultNumber >= 1 and resultNumber <= 4
+
+proc calculatePayout(betType: BetType, bet: int): int =
+  case betType:
+  of BetNumber:
+    return bet * 10  # 10x for exact number
+  of BetRed, BetBlack, BetOdd, BetEven:
+    return bet * 2   # 2x for color/odd/even
+  of BetHigh, BetLow:
+    return bet * 2   # 2x for high/low
 
 proc draw3DNumber(num: int, pos: Vector3, size: float, color: Color) =
   # Draw simple 3D numbers using cubes
@@ -73,6 +107,7 @@ proc newRoulette*(pos: Vector3): Roulette =
   result.state = Idle
   result.selectedNumber = 0
   result.playerBet = 0
+  result.betType = BetNumber
   result.betNumber = -1
   result.timer = 0.0
   result.moneyAwarded = false
@@ -92,48 +127,54 @@ proc draw3D*(roulette: Roulette) =
 
   # --- Base ---
   let basePos = Vector3(x: roulette.position.x, y: roulette.position.y + wobbleOffset, z: roulette.position.z)
-  drawCylinder(basePos, 1.8, 1.8, 0.25, 32, Color(r: 80, g: 40, b: 20, a: 255)) # madera
-  drawCylinder(basePos, 1.6, 1.6, 0.3, 32, Color(r: 110, g: 60, b: 30, a: 255)) # borde superior
+  drawCylinder(basePos, 1.8, 1.8, 0.25, 32, Color(r: 80, g: 40, b: 20, a: 255))
+  drawCylinder(basePos, 1.6, 1.6, 0.3, 32, Color(r: 110, g: 60, b: 30, a: 255))
 
-  # --- Aro metálico ---
+  # --- Gold ring ---
   let ringPos = Vector3(x: basePos.x, y: basePos.y + 0.15, z: basePos.z)
-  drawCylinder(ringPos, 1.45, 1.45, 0.1, 32, Color(r: 200, g: 160, b: 80, a: 255)) # dorado
-  drawCylinder(ringPos, 1.35, 1.35, 0.1, 32, Color(r: 120, g: 60, b: 0, a: 255))  # sombra interior
+  drawCylinder(ringPos, 1.45, 1.45, 0.1, 32, Color(r: 200, g: 160, b: 80, a: 255))
+  drawCylinder(ringPos, 1.35, 1.35, 0.1, 32, Color(r: 120, g: 60, b: 0, a: 255))
 
-  # --- Rueda ---
+  # --- Wheel surface ---
   let wheelPos = Vector3(x: ringPos.x, y: ringPos.y + 0.1, z: ringPos.z)
-  drawCylinder(wheelPos, 1.2, 1.2, 0.08, 64, Color(r: 60, g: 30, b: 10, a: 255)) # superficie oscura
+  drawCylinder(wheelPos, 1.2, 1.2, 0.08, 64, Color(r: 60, g: 30, b: 10, a: 255))
 
-  # --- Secciones rojo/negro/verde ---
+  # --- Roulette pockets with proper colors ---
   for i in 0..35:
     let angle1 = (i.float / 36.0) * TAU + roulette.rotation
     let angle2 = ((i.float + 1.0) / 36.0) * TAU + roulette.rotation
-
-    var color: Color
-    if i == 0:
-      color = Color(r: 0, g: 180, b: 0, a: 255) # verde 0
-    elif i mod 2 == 0:
-      color = Color(r: 180, g: 0, b: 0, a: 255) # rojo
+    
+    let number = i mod 10
+    var pocketColor: Color
+    
+    if number == 0:
+      pocketColor = Color(r: 0, g: 200, b: 50, a: 255)  # Green for 0
+    elif number in RED_NUMBERS:
+      pocketColor = Color(r: 220, g: 20, b: 20, a: 255)  # Red
     else:
-      color = Color(r: 20, g: 20, b: 20, a: 255) # negro
+      pocketColor = Color(r: 30, g: 30, b: 30, a: 255)  # Black
 
     let rInner = 0.35
     let rOuter = 1.15
 
-    let p1 = Vector3(x: wheelPos.x + cos(angle1) * rInner, y: wheelPos.y, z: wheelPos.z + sin(angle1) * rInner)
-    let p2 = Vector3(x: wheelPos.x + cos(angle2) * rInner, y: wheelPos.y, z: wheelPos.z + sin(angle2) * rInner)
-    let p3 = Vector3(x: wheelPos.x + cos(angle2) * rOuter, y: wheelPos.y + 0.01, z: wheelPos.z + sin(angle2) * rOuter)
-    let p4 = Vector3(x: wheelPos.x + cos(angle1) * rOuter, y: wheelPos.y + 0.01, z: wheelPos.z + sin(angle1) * rOuter)
+    let p1 = Vector3(x: wheelPos.x + cos(angle1) * rInner, y: wheelPos.y + 0.02, z: wheelPos.z + sin(angle1) * rInner)
+    let p2 = Vector3(x: wheelPos.x + cos(angle2) * rInner, y: wheelPos.y + 0.02, z: wheelPos.z + sin(angle2) * rInner)
+    let p3 = Vector3(x: wheelPos.x + cos(angle2) * rOuter, y: wheelPos.y + 0.02, z: wheelPos.z + sin(angle2) * rOuter)
+    let p4 = Vector3(x: wheelPos.x + cos(angle1) * rOuter, y: wheelPos.y + 0.02, z: wheelPos.z + sin(angle1) * rOuter)
 
-    drawTriangle3D(p1, p2, p3, color)
-    drawTriangle3D(p1, p3, p4, color)
+    drawTriangle3D(p1, p2, p3, pocketColor)
+    drawTriangle3D(p1, p3, p4, pocketColor)
+    
+    # Gold separators between pockets
+    drawLine3D(p1, p4, Gold)
+    drawLine3D(p2, p3, Gold)
 
-  # --- Centro cóncavo ---
+  # --- Center cone ---
   drawCylinder(Vector3(x: wheelPos.x, y: wheelPos.y + 0.08, z: wheelPos.z),
                0.35, 0.1, 0.05, 16, Color(r: 90, g: 50, b: 10, a: 255))
   drawSphere(Vector3(x: wheelPos.x, y: wheelPos.y + 0.12, z: wheelPos.z), 0.12, Gold)
 
-  # --- Números alrededor ---
+  # --- Numbers with correct coloring ---
   for i in 0..9:
     let angle = (i.float / 10.0) * TAU + roulette.rotation
     let numPos = Vector3(
@@ -143,7 +184,15 @@ proc draw3D*(roulette: Roulette) =
     )
 
     let isSelected = (i == roulette.selectedNumber) and roulette.state == Result
-    var numColor = if i == 0: Green else: White
+    var numColor: Color
+    
+    if i == 0:
+      numColor = Color(r: 0, g: 255, b: 100, a: 255)  # Green for 0
+    elif i in RED_NUMBERS:
+      numColor = Color(r: 255, g: 50, b: 50, a: 255)  # Red numbers
+    else:
+      numColor = Color(r: 230, g: 230, b: 230, a: 255)  # Black numbers (shown as white)
+    
     if isSelected and roulette.flashTimer > 0.0:
       numColor = Gold
 
@@ -153,7 +202,7 @@ proc draw3D*(roulette: Roulette) =
       let glowSize = 0.25 + sin(getTime() * 8.0) * 0.05
       drawSphere(numPos, glowSize, Color(r: 255, g: 215, b: 0, a: 100))
 
-  # --- Bola ---
+  # --- Ball ---
   if roulette.state == Spinning or roulette.state == Settling:
     let ballHeight = wheelPos.y + 0.25 + sin(roulette.ballAngle * 3.0) * 0.03
     let ballPos = Vector3(
@@ -167,7 +216,7 @@ proc draw3D*(roulette: Roulette) =
 
 proc update*(roulette: Roulette, deltaTime: float) =
   case roulette.state:
-  of Idle:
+  of Idle, ChoosingBetType, ChoosingBetValue:
     discard
   
   of Anticipation:
@@ -182,6 +231,10 @@ proc update*(roulette: Roulette, deltaTime: float) =
       roulette.ballRadius = 1.05
       roulette.ballAngle = rand(PI * 2.0)
       roulette.bounceCount = 0
+      roulette.moneyToAward = 0
+      roulette.moneyAwardedSoFar = 0
+      roulette.moneyTimer = 0.0
+      roulette.anticipationWobble = 0.0
   
   of Spinning:
     roulette.rotation += roulette.spinSpeed * deltaTime
@@ -244,144 +297,266 @@ proc play*(roulette: Roulette, player: Player): bool =
   
   if roulette.state == Idle:
     var messages: seq[string] = @[]
-    messages.add("=== ROULETTE ===")
+    messages.add("╔════════════════════════════╗")
+    messages.add("║      ROULETTE TABLE       ║")
+    messages.add("╚════════════════════════════╝")
     messages.add("")
     
     if roulette.playerBet == 0:
-      messages.add("Choose your bet:")
+      messages.add("Choose your bet amount:")
       messages.add("")
-      messages.add("[1] $10   [2] $50   [3] $100")
-      messages.add("[ESC] Back")
+      messages.add("┌──────────────────────────┐")
+      messages.add("│ [1] $10    [2] $50       │")
+      messages.add("│ [3] $100   [4] $200      │")
+      messages.add("└──────────────────────────┘")
+      messages.add("")
+      messages.add("[ESC] Leave table")
       
       if isKeyPressed(One):
         if player.removeMoney(10):
           roulette.playerBet = 10
+          roulette.state = ChoosingBetType
         else:
-          messages.add("Not enough money!")
+          messages.add("")
+          messages.add("⚠ Insufficient funds!")
       elif isKeyPressed(Two):
         if player.removeMoney(50):
           roulette.playerBet = 50
+          roulette.state = ChoosingBetType
         else:
-          messages.add("Not enough money!")
+          messages.add("")
+          messages.add("⚠ Insufficient funds!")
       elif isKeyPressed(Three):
         if player.removeMoney(100):
           roulette.playerBet = 100
+          roulette.state = ChoosingBetType
         else:
-          messages.add("Not enough money!")
+          messages.add("")
+          messages.add("⚠ Insufficient funds!")
+      elif isKeyPressed(Four):
+        if player.removeMoney(200):
+          roulette.playerBet = 200
+          roulette.state = ChoosingBetType
+        else:
+          messages.add("")
+          messages.add("⚠ Insufficient funds!")
       elif isKeyPressed(Escape):
         return true
-    else:
-      messages.add("Bet: " & formatMoney(roulette.playerBet))
-      messages.add("")
-      messages.add("Pick a number (0-9):")
-      messages.add("")
-      messages.add("[0-9] Choose   [SPACE] Spin")
-      messages.add("[ESC] Cancel")
-      
-      if roulette.betNumber >= 0:
-        messages.add("")
-        messages.add("Selected: " & $roulette.betNumber)
-      
-      if isKeyPressed(Zero): roulette.betNumber = 0
-      elif isKeyPressed(One): roulette.betNumber = 1
-      elif isKeyPressed(Two): roulette.betNumber = 2
-      elif isKeyPressed(Three): roulette.betNumber = 3
-      elif isKeyPressed(Four): roulette.betNumber = 4
-      elif isKeyPressed(Five): roulette.betNumber = 5
-      elif isKeyPressed(Six): roulette.betNumber = 6
-      elif isKeyPressed(Seven): roulette.betNumber = 7
-      elif isKeyPressed(Eight): roulette.betNumber = 8
-      elif isKeyPressed(Nine): roulette.betNumber = 9
-      
-      if isKeyPressed(Space) and roulette.betNumber >= 0:
-        roulette.state = Anticipation
-        roulette.timer = 0.0
-        roulette.moneyAwarded = false
-        roulette.moneyToAward = 0
-        roulette.moneyAwardedSoFar = 0
-        roulette.moneyTimer = 0.0
-        roulette.anticipationWobble = 0.0
     
     drawMinigameUI("ROULETTE", player, messages)
+  
+  elif roulette.state == ChoosingBetType:
+    var messages: seq[string] = @[]
+    messages.add("╔════════════════════════════╗")
+    messages.add("║    CHOOSE YOUR BET TYPE   ║")
+    messages.add("╚════════════════════════════╝")
+    messages.add("")
+    messages.add("Bet: " & formatMoney(roulette.playerBet))
+    messages.add("")
+    messages.add("┌──────────────────────────┐")
+    messages.add("│ [1] 🎯 Number (10x)      │")
+    messages.add("│ [2] 🔴 Red (2x)          │")
+    messages.add("│ [3] ⚫ Black (2x)        │")
+    messages.add("│ [4] 📊 Odd (2x)          │")
+    messages.add("│ [5] 📈 Even (2x)         │")
+    messages.add("│ [6] ⬆️  High 5-9 (2x)     │")
+    messages.add("│ [7] ⬇️  Low 1-4 (2x)      │")
+    messages.add("└──────────────────────────┘")
+    messages.add("")
+    messages.add("[ESC] Cancel bet")
     
-    if isKeyReleased(Escape):
-      if roulette.playerBet > 0:
-        player.addMoney(roulette.playerBet)
+    if isKeyPressed(One):
+      roulette.betType = BetNumber
+      roulette.state = ChoosingBetValue
+    elif isKeyPressed(Two):
+      roulette.betType = BetRed
+      roulette.state = Anticipation
+      roulette.timer = 0.0
+      roulette.moneyAwarded = false
+    elif isKeyPressed(Three):
+      roulette.betType = BetBlack
+      roulette.state = Anticipation
+      roulette.timer = 0.0
+      roulette.moneyAwarded = false
+    elif isKeyPressed(Four):
+      roulette.betType = BetOdd
+      roulette.state = Anticipation
+      roulette.timer = 0.0
+      roulette.moneyAwarded = false
+    elif isKeyPressed(Five):
+      roulette.betType = BetEven
+      roulette.state = Anticipation
+      roulette.timer = 0.0
+      roulette.moneyAwarded = false
+    elif isKeyPressed(Six):
+      roulette.betType = BetHigh
+      roulette.state = Anticipation
+      roulette.timer = 0.0
+      roulette.moneyAwarded = false
+    elif isKeyPressed(Seven):
+      roulette.betType = BetLow
+      roulette.state = Anticipation
+      roulette.timer = 0.0
+      roulette.moneyAwarded = false
+    elif isKeyPressed(Escape):
+      player.addMoney(roulette.playerBet)
       roulette.playerBet = 0
+      roulette.state = Idle
+    
+    drawMinigameUI("ROULETTE", player, messages)
+  
+  elif roulette.state == ChoosingBetValue:
+    var messages: seq[string] = @[]
+    messages.add("╔════════════════════════════╗")
+    messages.add("║    PICK YOUR NUMBER       ║")
+    messages.add("╚════════════════════════════╝")
+    messages.add("")
+    messages.add("Bet: " & formatMoney(roulette.playerBet) & " on NUMBER")
+    messages.add("Payout: 10x your bet!")
+    messages.add("")
+    messages.add("┌──────────────────────────┐")
+    messages.add("│ 🟢 [0] Zero              │")
+    messages.add("│ 🔴 [1][3][5][7][9] Red   │")
+    messages.add("│ ⚫ [2][4][6][8] Black     │")
+    messages.add("└──────────────────────────┘")
+    messages.add("")
+    
+    if roulette.betNumber >= 0:
+      messages.add("Selected: " & $roulette.betNumber)
+      messages.add("[SPACE] Confirm & Spin")
+    
+    messages.add("[ESC] Back")
+    
+    if isKeyPressed(Zero): roulette.betNumber = 0
+    elif isKeyPressed(One): roulette.betNumber = 1
+    elif isKeyPressed(Two): roulette.betNumber = 2
+    elif isKeyPressed(Three): roulette.betNumber = 3
+    elif isKeyPressed(Four): roulette.betNumber = 4
+    elif isKeyPressed(Five): roulette.betNumber = 5
+    elif isKeyPressed(Six): roulette.betNumber = 6
+    elif isKeyPressed(Seven): roulette.betNumber = 7
+    elif isKeyPressed(Eight): roulette.betNumber = 8
+    elif isKeyPressed(Nine): roulette.betNumber = 9
+    
+    if isKeyPressed(Space) and roulette.betNumber >= 0:
+      roulette.state = Anticipation
+      roulette.timer = 0.0
+      roulette.moneyAwarded = false
+    elif isKeyPressed(Escape):
+      roulette.state = ChoosingBetType
       roulette.betNumber = -1
-      return true
+    
+    drawMinigameUI("ROULETTE", player, messages)
   
   elif roulette.state == Anticipation:
     var messages: seq[string] = @[]
-    messages.add("=== GET READY ===")
+    messages.add("╔════════════════════════════╗")
+    messages.add("║     🎰 PLACING BETS 🎰    ║")
+    messages.add("╚════════════════════════════╝")
     drawMinigameUI("ROULETTE", player, messages)
   
   elif roulette.state == Spinning or roulette.state == Settling:
     var messages: seq[string] = @[]
     
     if roulette.state == Spinning:
-      messages.add("=== SPINNING ===")
+      messages.add("╔════════════════════════════╗")
+      messages.add("║   🌀 WHEEL SPINNING! 🌀   ║")
+      messages.add("╚════════════════════════════╝")
     else:
-      messages.add("=== SETTLING ===")
+      messages.add("╔════════════════════════════╗")
+      messages.add("║   ⏳ BALL SETTLING... ⏳   ║")
+      messages.add("╚════════════════════════════╝")
     
     drawMinigameUI("ROULETTE", player, messages)
   
   elif roulette.state == Result:
     var messages: seq[string] = @[]
     
-    if roulette.flashTimer > 0.0 and (int(roulette.flashTimer * 8.0) mod 2 == 0):
-      messages.add("=== 🎰 WINNER!!! 🎰 ===")
+    let isWin = isWinningBet(roulette.betType, roulette.betNumber, roulette.selectedNumber)
+    
+    if isWin and roulette.flashTimer > 0.0 and (int(roulette.flashTimer * 8.0) mod 2 == 0):
+      messages.add("╔════════════════════════════╗")
+      messages.add("║   🎉 WINNER!!! 🎉        ║")
+      messages.add("╚════════════════════════════╝")
     else:
-      messages.add("=== RESULT ===")
+      messages.add("╔════════════════════════════╗")
+      messages.add("║        RESULT             ║")
+      messages.add("╚════════════════════════════╝")
     
     messages.add("")
-    messages.add("Number: " & $roulette.selectedNumber)
-    messages.add("Your bet: " & $roulette.betNumber)
+    
+    var resultColor = "🟢"
+    if roulette.selectedNumber in RED_NUMBERS:
+      resultColor = "🔴"
+    elif roulette.selectedNumber in BLACK_NUMBERS:
+      resultColor = "⚫"
+    
+    messages.add("Number: " & resultColor & " " & $roulette.selectedNumber)
+    messages.add("")
+    
+    case roulette.betType:
+    of BetNumber:
+      messages.add("Your bet: NUMBER " & $roulette.betNumber)
+    of BetRed:
+      messages.add("Your bet: 🔴 RED")
+    of BetBlack:
+      messages.add("Your bet: ⚫ BLACK")
+    of BetOdd:
+      messages.add("Your bet: 📊 ODD")
+    of BetEven:
+      messages.add("Your bet: 📈 EVEN")
+    of BetHigh:
+      messages.add("Your bet: ⬆️  HIGH (5-9)")
+    of BetLow:
+      messages.add("Your bet: ⬇️  LOW (1-4)")
+    
     messages.add("")
     
     if not roulette.moneyAwarded:
-      if roulette.selectedNumber == roulette.betNumber:
-        roulette.moneyToAward = roulette.playerBet * 10
-        messages.add("🎉 YOU WIN!")
-        messages.add("Won: " & formatMoney(roulette.moneyToAward))
+      if isWin:
+        roulette.moneyToAward = calculatePayout(roulette.betType, roulette.playerBet)
+        roulette.flashTimer = 1.5
+        messages.add("┌──────────────────────────┐")
+        messages.add("│  ✨ YOU WIN! ✨         │")
+        messages.add("│  Won: " & formatMoney(roulette.moneyToAward) & "                │")
+        messages.add("└──────────────────────────┘")
       else:
         roulette.moneyToAward = 0
-        messages.add("💔 YOU LOSE")
-        messages.add("Lost: " & formatMoney(roulette.playerBet))
+        messages.add("┌──────────────────────────┐")
+        messages.add("│  💔 YOU LOSE             │")
+        messages.add("│  Lost: " & formatMoney(roulette.playerBet) & "                │")
+        messages.add("└──────────────────────────┘")
       roulette.moneyAwarded = true
     else:
       roulette.moneyTimer += getFrameTime()
       
       if roulette.moneyTimer >= 0.06 and roulette.moneyAwardedSoFar < roulette.moneyToAward:
         roulette.moneyTimer = 0.0
-        
-        var increment: int
-        if roulette.moneyToAward < 100:
-          increment = 5
-        elif roulette.moneyToAward < 500:
-          increment = 10
-        elif roulette.moneyToAward < 1000:
-          increment = 25
-        else:
-          increment = 50
-        
+        var increment = if roulette.moneyToAward < 100: 5
+                        elif roulette.moneyToAward < 500: 10
+                        elif roulette.moneyToAward < 1000: 25
+                        else: 50
         increment = min(increment, roulette.moneyToAward - roulette.moneyAwardedSoFar)
         player.addMoney(increment)
         roulette.moneyAwardedSoFar += increment
       
-      if roulette.selectedNumber == roulette.betNumber:
-        messages.add("🎉 YOU WIN!")
-        messages.add("Won: " & formatMoney(roulette.moneyToAward))
+      if isWin:
+        messages.add("┌──────────────────────────┐")
+        messages.add("│  ✨ YOU WIN! ✨         │")
+        messages.add("│  Won: " & formatMoney(roulette.moneyToAward) & "                │")
+        messages.add("└──────────────────────────┘")
       else:
-        messages.add("💔 YOU LOSE")
-        messages.add("Lost: " & formatMoney(roulette.playerBet))
+        messages.add("┌──────────────────────────┐")
+        messages.add("│  💔 YOU LOSE             │")
+        messages.add("│  Lost: " & formatMoney(roulette.playerBet) & "                │")
+        messages.add("└──────────────────────────┘")
     
     messages.add("")
     
     if roulette.moneyAwardedSoFar >= roulette.moneyToAward:
       messages.add("Press any key to continue...")
     else:
-      messages.add("Awarding winnings...")
+      messages.add("💰 Awarding winnings...")
     
     drawMinigameUI("ROULETTE", player, messages)
     
@@ -390,6 +565,7 @@ proc play*(roulette: Roulette, player: Player): bool =
       roulette.betNumber = -1
       roulette.winGlow = 0.0
       roulette.flashTimer = 0.0
+      roulette.state = Idle
       return true
   
   return false

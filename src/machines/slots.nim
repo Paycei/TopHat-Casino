@@ -1,4 +1,4 @@
-import raylib, math, random
+import raylib, rlgl, math, random
 import ../utils, ../player, ../ui
 
 type
@@ -101,25 +101,24 @@ proc drawSymbol3D(symbol: string, pos: Vector3, size: float, color: Color) =
     drawCube(pos, size, size, size * 0.1, color)
 
 proc draw3D*(slots: Slots) =
-  # Función auxiliar: rota un punto 180° alrededor del eje Y respecto a un origen
-  func rotateY180(v: Vector3, origin: Vector3): Vector3 =
-    result.x = origin.x - (v.x - origin.x)
-    result.y = v.y
-    result.z = origin.z - (v.z - origin.z)
+  # --- Rotar 180° en Y para que mire hacia el jugador ---
+  pushMatrix()
+  translatef(slots.position.x, slots.position.y, slots.position.z)
+  rotatef(180, 0, 1, 0)
+  translatef(-slots.position.x, -slots.position.y, -slots.position.z)
 
-  let origin = slots.position  # Punto de rotación
   var shakeOffset = Vector3(x: 0.0, y: 0.0, z: 0.0)
   if slots.screenShake > 0.0:
     shakeOffset.x = (rand(1.0) - 0.5) * slots.screenShake * 0.1
     shakeOffset.y = (rand(1.0) - 0.5) * slots.screenShake * 0.1
 
-  # Cuerpo principal
+  # --- Cuerpo principal ---
   let bodyPos = Vector3(
     x: slots.position.x + shakeOffset.x,
     y: slots.position.y + 1.0 + shakeOffset.y,
     z: slots.position.z + shakeOffset.z
   )
-  drawCube(rotateY180(bodyPos, origin), 2.0, 2.0, 0.5, DarkGray)
+  drawCube(bodyPos, 2.0, 2.0, 0.5, DarkGray)
 
   if slots.winGlow > 0.0:
     let glowColor = Color(
@@ -128,78 +127,70 @@ proc draw3D*(slots: Slots) =
       b: 0,
       a: uint8(255.0 * slots.winGlow)
     )
-    drawCubeWires(rotateY180(bodyPos, origin), 2.05, 2.05, 0.55, glowColor)
+    drawCubeWires(bodyPos, 2.05, 2.05, 0.55, glowColor)
 
-  drawCubeWires(rotateY180(bodyPos, origin), 2.0, 2.0, 0.5, Gold)
+  drawCubeWires(bodyPos, 2.0, 2.0, 0.5, Gold)
 
-  # Reels (pantallas)
+  # --- Reels (pantallas) ---
   for i in 0..2:
     let reelPos = Vector3(
-      x: bodyPos.x - 0.6 + i.float * 0.6,
+      x: slots.position.x - 0.6 + i.float * 0.6,
       y: bodyPos.y + 0.3 + slots.reelOffset[i] + shakeOffset.y,
-      z: bodyPos.z - 0.26
+      z: slots.position.z - 0.26
     )
 
-    let reelRot = rotateY180(reelPos, origin)
-    drawCube(reelRot, 0.5, 0.8, 0.02, Black)
+    drawCube(reelPos, 0.5, 0.8, 0.02, Black)
 
-    if slots.state == Spinning:
+    # Marco de color
+    let borderColor = if slots.state == Spinning:
       let spinGlow = sin(getTime() * 10.0) * 0.3 + 0.7
-      let spinColor = Color(r: 255, g: 215, b: 0, a: uint8(255.0 * spinGlow))
-      drawCubeWires(reelRot, 0.52, 0.82, 0.03, spinColor)
+      Color(r: 255, g: 215, b: 0, a: uint8(255.0 * spinGlow))
     else:
-      drawCubeWires(reelRot, 0.5, 0.8, 0.02, Yellow)
+      Yellow
+    drawCubeWires(reelPos, 0.5, 0.8, 0.02, borderColor)
 
-    let symbolPos = Vector3(
-      x: reelPos.x,
-      y: reelPos.y,
-      z: reelPos.z - 0.02
-    )
-    let symbolRot = rotateY180(symbolPos, origin)
+    # Dibujar símbolos interpolados
+    let offset = slots.reelOffset[i]
+    let current = SYMBOLS[slots.reels[i]]
+    let target = SYMBOLS[slots.targetReels[i]]
+    let interpY = reelPos.y - offset * 0.5
 
-    if slots.spinProgress[i] < 1.0:
-      # Blur durante el giro
-      for j in 0..2:
-        let blurIdx = (slots.reels[i] + j) mod SYMBOLS.len
-        let blurY = symbolPos.y + (j.float - 1.0) * 0.25
-        let blurRot = rotateY180(Vector3(x: symbolPos.x, y: blurY, z: symbolPos.z), origin)
-        let alpha = 100 + int((1.0 - slots.spinProgress[i]) * 100.0)
-        drawSymbol3D(SYMBOLS[blurIdx], blurRot, 0.3,
-                     Color(r: 255, g: 255, b: 255, a: uint8(alpha)))
+    let symbolColor = if slots.spinProgress[i] < 1.0:
+      Color(r: 255, g: 255, b: 255, a: uint8(255 * 0.8))
     else:
-      drawSymbol3D(SYMBOLS[slots.reels[i]], symbolRot, 0.35, White)
+      White
+    drawSymbol3D(current, Vector3(x: reelPos.x, y: interpY, z: reelPos.z - 0.02), 0.35, symbolColor)
 
-  # Base inferior
-  let baseY = slots.position.y + sin(slots.anticipation * PI * 4.0) * 0.02
-  let basePos = Vector3(x: slots.position.x, y: baseY, z: slots.position.z)
-  drawCube(rotateY180(basePos, origin), 2.2, 0.2, 0.7, Maroon)
+    if offset > 0.05:
+      let nextY = reelPos.y + offset * 0.8
+      let alpha = uint8(200.0 * offset)
+      drawSymbol3D(target, Vector3(x: reelPos.x, y: nextY, z: reelPos.z - 0.02),
+                   0.3, Color(r: 255, g: 255, b: 255, a: alpha))
 
-  # Palanca (handle)
-  let handleBase = Vector3(
-    x: bodyPos.x + 1.1,
-    y: bodyPos.y - 0.3,
-    z: bodyPos.z
-  )
+  # --- Base inferior ---
+  let baseY = sin(slots.anticipation * PI * 4.0) * 0.02
+  drawCube(Vector3(x: slots.position.x, y: slots.position.y + baseY, z: slots.position.z), 2.2, 0.2, 0.7, Maroon)
+
+  # --- Palanca (handle) ---
+  let handleBase = Vector3(x: slots.position.x + 1.1, y: bodyPos.y - 0.3, z: slots.position.z)
   let handleTipY = handleBase.y + cos(slots.leverAngle) * 0.6
   let handleTipX = handleBase.x + sin(slots.leverAngle) * 0.2
+  drawCylinder(handleBase, 0.05, 0.05, 0.6, 8, Red)
+  drawSphere(Vector3(x: handleTipX, y: handleTipY, z: handleBase.z), 0.15, Red)
 
-  let handleBaseRot = rotateY180(handleBase, origin)
-  let handleTipRot = rotateY180(Vector3(x: handleTipX, y: handleTipY, z: handleBase.z), origin)
-
-  drawCylinder(handleBaseRot, 0.05, 0.05, 0.6, 8, Red)
-  drawSphere(handleTipRot, 0.15, Red)
-
-  # Partículas de victoria
+  # --- Partículas de victoria ---
   for particle in slots.particles:
     if particle.life > 0.0:
       let size = particle.life * 0.1
       let particlePos = Vector3(
-        x: bodyPos.x + particle.x,
-        y: bodyPos.y + particle.y,
-        z: bodyPos.z - 0.3
+        x: slots.position.x + particle.x,
+        y: slots.position.y + 1.0 + particle.y,
+        z: slots.position.z - 0.3
       )
-      drawSphere(rotateY180(particlePos, origin), size, Gold)
+      drawSphere(particlePos, size, Gold)
 
+  # --- Restaurar matriz ---
+  popMatrix()
 
 proc update*(slots: Slots, deltaTime: float) =
   if slots.state == LeverPull:
