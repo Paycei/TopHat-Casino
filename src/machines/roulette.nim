@@ -3,10 +3,11 @@ import ../utils, ../player, ../ui
 
 type
   RouletteState = enum
+   
     Idle, ChoosingBetType, ChoosingBetValue, Anticipation, Spinning, Settling, Result
   
   BetType = enum
-    BetNumber, BetRed, BetBlack, BetOdd, BetEven, BetHigh, BetLow
+    BetNumber, BetRed, BetBlack, BetOdd, BetEven
   
   Roulette* = ref object
     position*: Vector3
@@ -34,13 +35,6 @@ const
   RED_NUMBERS = [1, 3, 5, 7, 9]
   BLACK_NUMBERS = [2, 4, 6, 8]
 
-proc easeOutQuart(t: float): float =
-  let t2 = 1.0 - t
-  return 1.0 - t2 * t2 * t2 * t2
-
-proc easeInQuart(t: float): float =
-  return t * t * t * t
-
 proc isWinningBet(betType: BetType, betNumber: int, resultNumber: int): bool =
   case betType:
   of BetNumber:
@@ -53,10 +47,6 @@ proc isWinningBet(betType: BetType, betNumber: int, resultNumber: int): bool =
     return resultNumber > 0 and resultNumber mod 2 == 1
   of BetEven:
     return resultNumber > 0 and resultNumber mod 2 == 0
-  of BetHigh:
-    return resultNumber >= 5
-  of BetLow:
-    return resultNumber >= 1 and resultNumber <= 4
 
 proc calculatePayout(betType: BetType, bet: int): int =
   case betType:
@@ -64,40 +54,60 @@ proc calculatePayout(betType: BetType, bet: int): int =
     return bet * 10  # 10x for exact number
   of BetRed, BetBlack, BetOdd, BetEven:
     return bet * 2   # 2x for color/odd/even
-  of BetHigh, BetLow:
-    return bet * 2   # 2x for high/low
 
 proc draw3DNumber(num: int, pos: Vector3, size: float, color: Color) =
-  # Draw simple 3D numbers using cubes
-  let segments = case num:
-    of 0: @[(0.0, 1.0), (0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)]  # O shape
-    of 1: @[(1.0, 0.0), (1.0, 1.0)]  # I shape
-    of 2: @[(0.0, 1.0), (1.0, 1.0), (1.0, 0.5), (0.0, 0.5), (0.0, 0.0), (1.0, 0.0)]  # S shape
-    of 3: @[(0.0, 1.0), (1.0, 1.0), (1.0, 0.5), (0.0, 0.5), (1.0, 0.5), (1.0, 0.0), (0.0, 0.0)]
-    of 4: @[(0.0, 1.0), (0.0, 0.5), (1.0, 0.5), (1.0, 1.0), (1.0, 0.0)]
-    of 5: @[(1.0, 1.0), (0.0, 1.0), (0.0, 0.5), (1.0, 0.5), (1.0, 0.0), (0.0, 0.0)]
-    of 6: @[(1.0, 1.0), (0.0, 1.0), (0.0, 0.0), (1.0, 0.0), (1.0, 0.5), (0.0, 0.5)]
-    of 7: @[(0.0, 1.0), (1.0, 1.0), (1.0, 0.0)]
-    of 8: @[(0.0, 0.5), (0.0, 1.0), (1.0, 1.0), (1.0, 0.0), (0.0, 0.0), (0.0, 0.5), (1.0, 0.5)]
-    of 9: @[(1.0, 0.0), (1.0, 1.0), (0.0, 1.0), (0.0, 0.5), (1.0, 0.5)]
-    else: @[]
+  drawSphere(pos, size * 0.8, Color(r: color.r div 2, g: color.g div 2, b: color.b div 2, a: 180))
+  let cubeSize = size * 0.15
   
-  # Draw lines as thin cubes
-  for i in 0..<segments.len - 1:
-    let p1 = segments[i]
-    let p2 = segments[i + 1]
-    
-    let x1 = pos.x + (p1[0].float - 0.5) * size
-    let y1 = pos.y + (p1[1].float - 0.5) * size
-    let x2 = pos.x + (p2[0].float - 0.5) * size
-    let y2 = pos.y + (p2[1].float - 0.5) * size
-    
-    let midX = (x1 + x2) / 2.0
-    let midY = (y1 + y2) / 2.0
-    let len = sqrt((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1))
-    
-    if len > 0.01:
-      drawCube(Vector3(x: midX, y: midY, z: pos.z), size * 0.15, len, size * 0.1, color)
+  case num:
+  of 0:
+    for i in 0..7:
+      let angle = i.float * TAU / 8.0
+      let x = pos.x + cos(angle) * size * 0.4
+      let y = pos.y + sin(angle) * size * 0.4
+      drawCube(Vector3(x: x, y: y, z: pos.z), cubeSize, cubeSize, cubeSize, color)
+  of 1:
+    drawCube(pos, cubeSize * 0.8, size * 0.8, cubeSize, color)
+  of 2:
+    drawCube(Vector3(x: pos.x, y: pos.y + size * 0.3, z: pos.z), size * 0.5, cubeSize, cubeSize, color)
+    drawCube(Vector3(x: pos.x, y: pos.y, z: pos.z), size * 0.5, cubeSize, cubeSize, color)
+    drawCube(Vector3(x: pos.x, y: pos.y - size * 0.3, z: pos.z), size * 0.5, cubeSize, cubeSize, color)
+  of 3:
+    drawCube(Vector3(x: pos.x, y: pos.y + size * 0.3, z: pos.z), size * 0.5, cubeSize, cubeSize, color)
+    drawCube(pos, size * 0.5, cubeSize, cubeSize, color)
+    drawCube(Vector3(x: pos.x, y: pos.y - size * 0.3, z: pos.z), size * 0.5, cubeSize, cubeSize, color)
+  of 4:
+    drawCube(Vector3(x: pos.x - size * 0.2, y: pos.y, z: pos.z), cubeSize, size * 0.8, cubeSize, color)
+    drawCube(Vector3(x: pos.x + size * 0.2, y: pos.y, z: pos.z), cubeSize, size * 0.8, cubeSize, color)
+  of 5:
+    drawCube(Vector3(x: pos.x, y: pos.y + size * 0.3, z: pos.z), size * 0.5, cubeSize, cubeSize, color)
+    drawCube(pos, size * 0.5, cubeSize, cubeSize, color)
+    drawCube(Vector3(x: pos.x, y: pos.y - size * 0.3, z: pos.z), size * 0.5, cubeSize, cubeSize, color)
+  of 6:
+    for i in 0..5:
+      let angle = i.float * TAU / 6.0 - TAU / 12.0
+      let x = pos.x + cos(angle) * size * 0.4
+      let y = pos.y + sin(angle) * size * 0.4
+      drawCube(Vector3(x: x, y: y, z: pos.z), cubeSize, cubeSize, cubeSize, color)
+  of 7:
+    drawCube(Vector3(x: pos.x, y: pos.y + size * 0.3, z: pos.z), size * 0.5, cubeSize, cubeSize, color)
+    drawCube(Vector3(x: pos.x + size * 0.1, y: pos.y, z: pos.z), cubeSize, size * 0.5, cubeSize, color)
+  of 8:
+    for i in 0..3:
+      let angle = i.float * TAU / 4.0
+      let x = pos.x + cos(angle) * size * 0.35
+      let y1 = pos.y + size * 0.15 + sin(angle) * size * 0.35
+      let y2 = pos.y - size * 0.15 + sin(angle) * size * 0.35
+      drawCube(Vector3(x: x, y: y1, z: pos.z), cubeSize, cubeSize, cubeSize, color)
+      drawCube(Vector3(x: x, y: y2, z: pos.z), cubeSize, cubeSize, cubeSize, color)
+  of 9:
+    for i in 0..5:
+      let angle = i.float * TAU / 6.0 + TAU / 12.0
+      let x = pos.x + cos(angle) * size * 0.4
+      let y = pos.y + sin(angle) * size * 0.4
+      drawCube(Vector3(x: x, y: y, z: pos.z), cubeSize, cubeSize, cubeSize, color)
+  else:
+    drawSphere(pos, size * 0.5, color)
 
 proc newRoulette*(pos: Vector3): Roulette =
   result = Roulette()
@@ -124,22 +134,14 @@ proc newRoulette*(pos: Vector3): Roulette =
 
 proc draw3D*(roulette: Roulette) =
   let wobbleOffset = sin(roulette.anticipationWobble * PI * 8.0) * 0.02
-
-  # --- Base ---
   let basePos = Vector3(x: roulette.position.x, y: roulette.position.y + wobbleOffset, z: roulette.position.z)
   drawCylinder(basePos, 1.8, 1.8, 0.25, 32, Color(r: 80, g: 40, b: 20, a: 255))
   drawCylinder(basePos, 1.6, 1.6, 0.3, 32, Color(r: 110, g: 60, b: 30, a: 255))
-
-  # --- Gold ring ---
   let ringPos = Vector3(x: basePos.x, y: basePos.y + 0.15, z: basePos.z)
   drawCylinder(ringPos, 1.45, 1.45, 0.1, 32, Color(r: 200, g: 160, b: 80, a: 255))
   drawCylinder(ringPos, 1.35, 1.35, 0.1, 32, Color(r: 120, g: 60, b: 0, a: 255))
-
-  # --- Wheel surface ---
   let wheelPos = Vector3(x: ringPos.x, y: ringPos.y + 0.1, z: ringPos.z)
   drawCylinder(wheelPos, 1.2, 1.2, 0.08, 64, Color(r: 60, g: 30, b: 10, a: 255))
-
-  # --- Roulette pockets with proper colors ---
   for i in 0..35:
     let angle1 = (i.float / 36.0) * TAU + roulette.rotation
     let angle2 = ((i.float + 1.0) / 36.0) * TAU + roulette.rotation
@@ -164,17 +166,11 @@ proc draw3D*(roulette: Roulette) =
 
     drawTriangle3D(p1, p2, p3, pocketColor)
     drawTriangle3D(p1, p3, p4, pocketColor)
-    
-    # Gold separators between pockets
     drawLine3D(p1, p4, Gold)
     drawLine3D(p2, p3, Gold)
-
-  # --- Center cone ---
   drawCylinder(Vector3(x: wheelPos.x, y: wheelPos.y + 0.08, z: wheelPos.z),
                0.35, 0.1, 0.05, 16, Color(r: 90, g: 50, b: 10, a: 255))
   drawSphere(Vector3(x: wheelPos.x, y: wheelPos.y + 0.12, z: wheelPos.z), 0.12, Gold)
-
-  # --- Numbers with correct coloring ---
   for i in 0..9:
     let angle = (i.float / 10.0) * TAU + roulette.rotation
     let numPos = Vector3(
@@ -201,8 +197,6 @@ proc draw3D*(roulette: Roulette) =
     if isSelected:
       let glowSize = 0.25 + sin(getTime() * 8.0) * 0.05
       drawSphere(numPos, glowSize, Color(r: 255, g: 215, b: 0, a: 100))
-
-  # --- Ball ---
   if roulette.state == Spinning or roulette.state == Settling:
     let ballHeight = wheelPos.y + 0.25 + sin(roulette.ballAngle * 3.0) * 0.03
     let ballPos = Vector3(
@@ -288,7 +282,11 @@ proc update*(roulette: Roulette, deltaTime: float) =
     else:
       roulette.winGlow = 0.0
     
-    if roulette.timer > 3.0:
+    if roulette.timer > 3.0 and roulette.moneyAwardedSoFar >= roulette.moneyToAward:
+      roulette.playerBet = 0
+      roulette.betNumber = -1
+      roulette.winGlow = 0.0
+      roulette.flashTimer = 0.0
       roulette.state = Idle
       roulette.anticipationWobble = 0.0
 
@@ -297,18 +295,18 @@ proc play*(roulette: Roulette, player: Player): bool =
   
   if roulette.state == Idle:
     var messages: seq[string] = @[]
-    messages.add("╔════════════════════════════╗")
-    messages.add("║      ROULETTE TABLE       ║")
-    messages.add("╚════════════════════════════╝")
+    messages.add("+==========================+")
+    messages.add("|      ROULETTE TABLE       |")
+    messages.add("+==========================+")
     messages.add("")
     
     if roulette.playerBet == 0:
       messages.add("Choose your bet amount:")
       messages.add("")
-      messages.add("┌──────────────────────────┐")
-      messages.add("│ [1] $10    [2] $50       │")
-      messages.add("│ [3] $100   [4] $200      │")
-      messages.add("└──────────────────────────┘")
+      messages.add("+-------------------------+")
+      messages.add("| [1] $10    [2] $50      |")
+      messages.add("| [3] $100   [4] $200     |")
+      messages.add("+-------------------------+")
       messages.add("")
       messages.add("[ESC] Leave table")
       
@@ -347,21 +345,19 @@ proc play*(roulette: Roulette, player: Player): bool =
   
   elif roulette.state == ChoosingBetType:
     var messages: seq[string] = @[]
-    messages.add("╔════════════════════════════╗")
-    messages.add("║    CHOOSE YOUR BET TYPE   ║")
-    messages.add("╚════════════════════════════╝")
+    messages.add("+==========================+")
+    messages.add("|    CHOOSE YOUR BET TYPE   |")
+    messages.add("+==========================+")
     messages.add("")
     messages.add("Bet: " & formatMoney(roulette.playerBet))
     messages.add("")
-    messages.add("┌──────────────────────────┐")
-    messages.add("│ [1] 🎯 Number (10x)      │")
-    messages.add("│ [2] 🔴 Red (2x)          │")
-    messages.add("│ [3] ⚫ Black (2x)        │")
-    messages.add("│ [4] 📊 Odd (2x)          │")
-    messages.add("│ [5] 📈 Even (2x)         │")
-    messages.add("│ [6] ⬆️  High 5-9 (2x)     │")
-    messages.add("│ [7] ⬇️  Low 1-4 (2x)      │")
-    messages.add("└──────────────────────────┘")
+    messages.add("+-------------------------+")
+    messages.add("| [1] Number (10x)        |")
+    messages.add("| [2] Red (2x)            |")
+    messages.add("| [3] Black (2x)          |")
+    messages.add("| [4] Odd (2x)            |")
+    messages.add("| [5] Even (2x)           |")
+    messages.add("+-------------------------+")
     messages.add("")
     messages.add("[ESC] Cancel bet")
     
@@ -388,16 +384,6 @@ proc play*(roulette: Roulette, player: Player): bool =
       roulette.state = Anticipation
       roulette.timer = 0.0
       roulette.moneyAwarded = false
-    elif isKeyPressed(Six):
-      roulette.betType = BetHigh
-      roulette.state = Anticipation
-      roulette.timer = 0.0
-      roulette.moneyAwarded = false
-    elif isKeyPressed(Seven):
-      roulette.betType = BetLow
-      roulette.state = Anticipation
-      roulette.timer = 0.0
-      roulette.moneyAwarded = false
     elif isKeyPressed(Escape):
       player.addMoney(roulette.playerBet)
       roulette.playerBet = 0
@@ -407,18 +393,18 @@ proc play*(roulette: Roulette, player: Player): bool =
   
   elif roulette.state == ChoosingBetValue:
     var messages: seq[string] = @[]
-    messages.add("╔════════════════════════════╗")
-    messages.add("║    PICK YOUR NUMBER       ║")
-    messages.add("╚════════════════════════════╝")
+    messages.add("+==========================+")
+    messages.add("|    PICK YOUR NUMBER       |")
+    messages.add("+==========================+")
     messages.add("")
     messages.add("Bet: " & formatMoney(roulette.playerBet) & " on NUMBER")
     messages.add("Payout: 10x your bet!")
     messages.add("")
-    messages.add("┌──────────────────────────┐")
-    messages.add("│ 🟢 [0] Zero              │")
-    messages.add("│ 🔴 [1][3][5][7][9] Red   │")
-    messages.add("│ ⚫ [2][4][6][8] Black     │")
-    messages.add("└──────────────────────────┘")
+    messages.add("+-------------------------+")
+    messages.add("| [0] Zero                |")
+    messages.add("| [1][3][5][7][9] Red     |")
+    messages.add("| [2][4][6][8] Black      |")
+    messages.add("+-------------------------+")
     messages.add("")
     
     if roulette.betNumber >= 0:
@@ -450,22 +436,22 @@ proc play*(roulette: Roulette, player: Player): bool =
   
   elif roulette.state == Anticipation:
     var messages: seq[string] = @[]
-    messages.add("╔════════════════════════════╗")
-    messages.add("║     🎰 PLACING BETS 🎰    ║")
-    messages.add("╚════════════════════════════╝")
+    messages.add("+==========================+")
+    messages.add("|     PLACING BETS...      |")
+    messages.add("+==========================+")
     drawMinigameUI("ROULETTE", player, messages)
   
   elif roulette.state == Spinning or roulette.state == Settling:
     var messages: seq[string] = @[]
     
     if roulette.state == Spinning:
-      messages.add("╔════════════════════════════╗")
-      messages.add("║   🌀 WHEEL SPINNING! 🌀   ║")
-      messages.add("╚════════════════════════════╝")
+      messages.add("+==========================+")
+      messages.add("|    WHEEL SPINNING!       |")
+      messages.add("+==========================+")
     else:
-      messages.add("╔════════════════════════════╗")
-      messages.add("║   ⏳ BALL SETTLING... ⏳   ║")
-      messages.add("╚════════════════════════════╝")
+      messages.add("+==========================+")
+      messages.add("|    BALL SETTLING...      |")
+      messages.add("+==========================+")
     
     drawMinigameUI("ROULETTE", player, messages)
   
@@ -475,13 +461,13 @@ proc play*(roulette: Roulette, player: Player): bool =
     let isWin = isWinningBet(roulette.betType, roulette.betNumber, roulette.selectedNumber)
     
     if isWin and roulette.flashTimer > 0.0 and (int(roulette.flashTimer * 8.0) mod 2 == 0):
-      messages.add("╔════════════════════════════╗")
-      messages.add("║   🎉 WINNER!!! 🎉        ║")
-      messages.add("╚════════════════════════════╝")
+      messages.add("+==========================+")
+      messages.add("|      WINNER!!!           |")
+      messages.add("+==========================+")
     else:
-      messages.add("╔════════════════════════════╗")
-      messages.add("║        RESULT             ║")
-      messages.add("╚════════════════════════════╝")
+      messages.add("+==========================+")
+      messages.add("|        RESULT            |")
+      messages.add("+==========================+")
     
     messages.add("")
     
@@ -505,10 +491,6 @@ proc play*(roulette: Roulette, player: Player): bool =
       messages.add("Your bet: 📊 ODD")
     of BetEven:
       messages.add("Your bet: 📈 EVEN")
-    of BetHigh:
-      messages.add("Your bet: ⬆️  HIGH (5-9)")
-    of BetLow:
-      messages.add("Your bet: ⬇️  LOW (1-4)")
     
     messages.add("")
     
@@ -516,16 +498,16 @@ proc play*(roulette: Roulette, player: Player): bool =
       if isWin:
         roulette.moneyToAward = calculatePayout(roulette.betType, roulette.playerBet)
         roulette.flashTimer = 1.5
-        messages.add("┌──────────────────────────┐")
-        messages.add("│  ✨ YOU WIN! ✨         │")
-        messages.add("│  Won: " & formatMoney(roulette.moneyToAward) & "                │")
-        messages.add("└──────────────────────────┘")
+        messages.add("+-------------------------+")
+        messages.add("|  YOU WIN!               |")
+        messages.add("|  Won: " & formatMoney(roulette.moneyToAward))
+        messages.add("+-------------------------+")
       else:
         roulette.moneyToAward = 0
-        messages.add("┌──────────────────────────┐")
-        messages.add("│  💔 YOU LOSE             │")
-        messages.add("│  Lost: " & formatMoney(roulette.playerBet) & "                │")
-        messages.add("└──────────────────────────┘")
+        messages.add("+-------------------------+")
+        messages.add("|  YOU LOSE               |")
+        messages.add("|  Lost: " & formatMoney(roulette.playerBet))
+        messages.add("+-------------------------+")
       roulette.moneyAwarded = true
     else:
       roulette.moneyTimer += getFrameTime()
@@ -541,15 +523,15 @@ proc play*(roulette: Roulette, player: Player): bool =
         roulette.moneyAwardedSoFar += increment
       
       if isWin:
-        messages.add("┌──────────────────────────┐")
-        messages.add("│  ✨ YOU WIN! ✨         │")
-        messages.add("│  Won: " & formatMoney(roulette.moneyToAward) & "                │")
-        messages.add("└──────────────────────────┘")
+        messages.add("+-------------------------+")
+        messages.add("|  YOU WIN!               |")
+        messages.add("|  Won: " & formatMoney(roulette.moneyToAward))
+        messages.add("+-------------------------+")
       else:
-        messages.add("┌──────────────────────────┐")
-        messages.add("│  💔 YOU LOSE             │")
-        messages.add("│  Lost: " & formatMoney(roulette.playerBet) & "                │")
-        messages.add("└──────────────────────────┘")
+        messages.add("+-------------------------+")
+        messages.add("|  YOU LOSE               |")
+        messages.add("|  Lost: " & formatMoney(roulette.playerBet))
+        messages.add("+-------------------------+")
     
     messages.add("")
     
@@ -560,12 +542,12 @@ proc play*(roulette: Roulette, player: Player): bool =
     
     drawMinigameUI("ROULETTE", player, messages)
     
-    if roulette.moneyAwardedSoFar >= roulette.moneyToAward and (isKeyPressed(Space) or isKeyPressed(Enter) or isKeyPressed(Escape)):
+    if roulette.moneyAwardedSoFar >= roulette.moneyToAward and getKeyPressed() != KeyboardKey.Null:
       roulette.playerBet = 0
       roulette.betNumber = -1
       roulette.winGlow = 0.0
       roulette.flashTimer = 0.0
       roulette.state = Idle
-      return true
+      return false
   
   return false

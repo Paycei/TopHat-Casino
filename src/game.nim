@@ -1,5 +1,5 @@
 import raylib
-import player, casino, ui, utils
+import player, casino, ui
 import machines/roulette, machines/slots, machines/blackjack
 
 type
@@ -61,20 +61,14 @@ proc update*(game: Game) =
     if game.exitInputCooldown > 0.0:
       game.exitInputCooldown -= deltaTime
       if game.exitInputCooldown < 0.0: game.exitInputCooldown = 0.0
-    # Check for pause (only when not just exited from a machine)
     if isKeyPressed(Escape) and not game.exitingMachine and game.exitInputCooldown == 0.0:
       game.state = Paused
       enableCursor()
-    
-    # Reset the exiting machine flag after one frame
     if game.exitingMachine:
       game.exitingMachine = false
-    
-    # Check for machine interaction
     let (nearestMachine, distance) = game.casino.getNearestMachine(game.player.position)
     
     if distance < game.interactionDistance:
-      # Draw interaction prompt
       clearBackground(Black)
       
       beginMode3D(game.player.camera)
@@ -96,12 +90,8 @@ proc update*(game: Game) =
           of RouletteM: 0
           of SlotsM: 1
           of BlackjackM: 2
-        
-        # Store original camera position
         game.originalCameraPos = game.player.camera.position
         game.originalCameraTarget = game.player.camera.target
-        
-        # Set target camera based on machine type
         let machinePos = nearestMachine.position
         case nearestMachine.machineType:
         of RouletteM:
@@ -142,7 +132,6 @@ proc update*(game: Game) =
         game.cameraTransition = 0.0
         enableCursor()
     else:
-      # Normal rendering
       clearBackground(Black)
       
       beginMode3D(game.player.camera)
@@ -153,13 +142,10 @@ proc update*(game: Game) =
       drawHUD(game.player)
   
   of InMachine:
-    # Animate camera transition
     if game.cameraTransition < 1.0:
       game.cameraTransition += deltaTime * 2.0
       if game.cameraTransition > 1.0:
         game.cameraTransition = 1.0
-      
-      # Smooth easing
       let t = game.cameraTransition
       let eased = t * t * (3.0 - 2.0 * t)  # Smoothstep
       
@@ -182,8 +168,6 @@ proc update*(game: Game) =
     endMode3D()
     
     var finished = false
-    
-    # Machine play returns true when player wants to exit
     case game.activeMachine:
     of 0:
       finished = game.casino.roulette.play(game.player)
@@ -193,10 +177,7 @@ proc update*(game: Game) =
       finished = game.casino.blackjack.play(game.player)
     else:
       finished = true
-    
-    # When finished, transition camera back
     if finished:
-      # Set flag to prevent pause menu from triggering on the same frame
       game.pendingExit = true
       game.exitingMachine = true
       game.exitInputCooldown = 0.18    # 180 ms, ajustar si hace falta
@@ -226,14 +207,10 @@ proc update*(game: Game) =
   
   of Paused:
     clearBackground(Black)
-    
-    # Draw game in background
     beginMode3D(game.player.camera)
     game.casino.drawEnvironment()
     game.casino.drawMachines()
     endMode3D()
-    
-    # Draw pause overlay
     let screenWidth = getScreenWidth()
     let screenHeight = getScreenHeight()
     
