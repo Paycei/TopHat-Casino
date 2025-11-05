@@ -89,95 +89,81 @@ proc newRoulette*(pos: Vector3): Roulette =
 
 proc draw3D*(roulette: Roulette) =
   let wobbleOffset = sin(roulette.anticipationWobble * PI * 8.0) * 0.02
-  let basePos = Vector3(
-    x: roulette.position.x,
-    y: roulette.position.y + wobbleOffset,
-    z: roulette.position.z
-  )
-  drawCylinder(basePos, 1.5, 1.5, 0.1, 16, DarkBrown)
-  
-  let wheelPos = Vector3(
-    x: basePos.x,
-    y: basePos.y + 0.15,
-    z: basePos.z
-  )
-  
-  if roulette.winGlow > 0.0:
-    let glowColor = Color(
-      r: 255,
-      g: uint8(215.0 * roulette.winGlow),
-      a: uint8(255.0 * roulette.winGlow)
-    )
-    drawCylinder(wheelPos, 1.25, 1.25, 0.12, 32, glowColor)
-  
-  drawCylinder(wheelPos, 1.2, 1.2, 0.1, 32, DarkGray)
-  
-  let spinPos = Vector3(x: wheelPos.x, y: wheelPos.y + 0.05, z: wheelPos.z)
-  
-  # Draw alternating red/black sections
+
+  # --- Base ---
+  let basePos = Vector3(x: roulette.position.x, y: roulette.position.y + wobbleOffset, z: roulette.position.z)
+  drawCylinder(basePos, 1.8, 1.8, 0.25, 32, Color(r: 80, g: 40, b: 20, a: 255)) # madera
+  drawCylinder(basePos, 1.6, 1.6, 0.3, 32, Color(r: 110, g: 60, b: 30, a: 255)) # borde superior
+
+  # --- Aro metálico ---
+  let ringPos = Vector3(x: basePos.x, y: basePos.y + 0.15, z: basePos.z)
+  drawCylinder(ringPos, 1.45, 1.45, 0.1, 32, Color(r: 200, g: 160, b: 80, a: 255)) # dorado
+  drawCylinder(ringPos, 1.35, 1.35, 0.1, 32, Color(r: 120, g: 60, b: 0, a: 255))  # sombra interior
+
+  # --- Rueda ---
+  let wheelPos = Vector3(x: ringPos.x, y: ringPos.y + 0.1, z: ringPos.z)
+  drawCylinder(wheelPos, 1.2, 1.2, 0.08, 64, Color(r: 60, g: 30, b: 10, a: 255)) # superficie oscura
+
+  # --- Secciones rojo/negro/verde ---
   for i in 0..35:
-    let angle1 = (i.float / 36.0) * PI * 2.0 + roulette.rotation
-    let angle2 = ((i.float + 1.0) / 36.0) * PI * 2.0 + roulette.rotation
-    let color = if i mod 2 == 0: Red else: Black
-    
-    # Draw wedge sections
-    let numPoints = 4
-    for j in 0..<numPoints:
-      let r1 = 0.3 + (j.float / numPoints.float) * 0.6
-      let r2 = 0.3 + ((j.float + 1.0) / numPoints.float) * 0.6
-      
-      let p1 = Vector3(x: spinPos.x + cos(angle1) * r1, y: spinPos.y, z: spinPos.z + sin(angle1) * r1)
-      let p2 = Vector3(x: spinPos.x + cos(angle2) * r1, y: spinPos.y, z: spinPos.z + sin(angle2) * r1)
-      let p3 = Vector3(x: spinPos.x + cos(angle2) * r2, y: spinPos.y, z: spinPos.z + sin(angle2) * r2)
-      let p4 = Vector3(x: spinPos.x + cos(angle1) * r2, y: spinPos.y, z: spinPos.z + sin(angle1) * r2)
-      
-      drawTriangle3D(p1, p2, p3, color)
-      drawTriangle3D(p1, p3, p4, color)
-  
-  # Center pin
-  drawCylinder(
-    Vector3(x: wheelPos.x, y: wheelPos.y + 0.1, z: wheelPos.z),
-    0.1, 0.1, 0.3, 8, Gold
-  )
-  
-  # Draw numbers around the wheel
+    let angle1 = (i.float / 36.0) * TAU + roulette.rotation
+    let angle2 = ((i.float + 1.0) / 36.0) * TAU + roulette.rotation
+
+    var color: Color
+    if i == 0:
+      color = Color(r: 0, g: 180, b: 0, a: 255) # verde 0
+    elif i mod 2 == 0:
+      color = Color(r: 180, g: 0, b: 0, a: 255) # rojo
+    else:
+      color = Color(r: 20, g: 20, b: 20, a: 255) # negro
+
+    let rInner = 0.35
+    let rOuter = 1.15
+
+    let p1 = Vector3(x: wheelPos.x + cos(angle1) * rInner, y: wheelPos.y, z: wheelPos.z + sin(angle1) * rInner)
+    let p2 = Vector3(x: wheelPos.x + cos(angle2) * rInner, y: wheelPos.y, z: wheelPos.z + sin(angle2) * rInner)
+    let p3 = Vector3(x: wheelPos.x + cos(angle2) * rOuter, y: wheelPos.y + 0.01, z: wheelPos.z + sin(angle2) * rOuter)
+    let p4 = Vector3(x: wheelPos.x + cos(angle1) * rOuter, y: wheelPos.y + 0.01, z: wheelPos.z + sin(angle1) * rOuter)
+
+    drawTriangle3D(p1, p2, p3, color)
+    drawTriangle3D(p1, p3, p4, color)
+
+  # --- Centro cóncavo ---
+  drawCylinder(Vector3(x: wheelPos.x, y: wheelPos.y + 0.08, z: wheelPos.z),
+               0.35, 0.1, 0.05, 16, Color(r: 90, g: 50, b: 10, a: 255))
+  drawSphere(Vector3(x: wheelPos.x, y: wheelPos.y + 0.12, z: wheelPos.z), 0.12, Gold)
+
+  # --- Números alrededor ---
   for i in 0..9:
-    let angle = (i.float / 10.0) * PI * 2.0 + roulette.rotation
+    let angle = (i.float / 10.0) * TAU + roulette.rotation
     let numPos = Vector3(
-      x: wheelPos.x + cos(angle) * 0.75,
-      y: wheelPos.y + 0.2,
-      z: wheelPos.z + sin(angle) * 0.75
+      x: wheelPos.x + cos(angle) * 0.9,
+      y: wheelPos.y + 0.25,
+      z: wheelPos.z + sin(angle) * 0.9
     )
-    
+
     let isSelected = (i == roulette.selectedNumber) and roulette.state == Result
-    let numberColor = if isSelected and roulette.flashTimer > 0.0: Gold else: White
-    
-    draw3DNumber(i, numPos, 0.15, numberColor)
-    
-    # Highlight selected with glow sphere
+    var numColor = if i == 0: Green else: White
+    if isSelected and roulette.flashTimer > 0.0:
+      numColor = Gold
+
+    draw3DNumber(i, numPos, 0.2, numColor)
+
     if isSelected:
       let glowSize = 0.25 + sin(getTime() * 8.0) * 0.05
       drawSphere(numPos, glowSize, Color(r: 255, g: 215, b: 0, a: 100))
-  
-  # Draw the ball
+
+  # --- Bola ---
   if roulette.state == Spinning or roulette.state == Settling:
-    let ballHeight = wheelPos.y + 0.25 + sin(roulette.ballAngle * 3.0) * 0.05
+    let ballHeight = wheelPos.y + 0.25 + sin(roulette.ballAngle * 3.0) * 0.03
     let ballPos = Vector3(
       x: wheelPos.x + cos(roulette.ballAngle) * roulette.ballRadius,
       y: ballHeight,
       z: wheelPos.z + sin(roulette.ballAngle) * roulette.ballRadius
     )
-    drawSphere(ballPos, 0.08, White)
-    
-    # Ball trail
-    if roulette.ballSpeed > 5.0:
-      let trailPos = Vector3(
-        x: wheelPos.x + cos(roulette.ballAngle - 0.2) * roulette.ballRadius,
-        y: ballHeight,
-        z: wheelPos.z + sin(roulette.ballAngle - 0.2) * roulette.ballRadius
-      )
-      let trailAlpha = uint8(100.0 * (roulette.ballSpeed / 20.0))
-      drawSphere(trailPos, 0.06, Color(r: 255, g: 255, b: 255, a: trailAlpha))
+    drawSphere(ballPos, 0.06, Color(r: 250, g: 250, b: 250, a: 255))
+    drawSphere(Vector3(x: ballPos.x, y: ballPos.y - 0.02, z: ballPos.z), 0.06, Color(r: 0, g: 0, b: 0, a: 60))
+
 
 proc update*(roulette: Roulette, deltaTime: float) =
   case roulette.state:
