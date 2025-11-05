@@ -40,9 +40,9 @@ proc update*(player: Player, deltaTime: float) =
   
   # Calculate forward and right vectors
   let forward = Vector3(
-    x: -sin(player.yaw),
+    x: sin(player.yaw),
     y: 0,
-    z: -cos(player.yaw)
+    z: cos(player.yaw)
   )
   
   let right = Vector3(

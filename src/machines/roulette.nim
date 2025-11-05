@@ -14,6 +14,9 @@ type
     playerBet*: int
     betNumber*: int
     timer*: float
+    moneyAwarded*: bool
+    moneyToAward*: int
+    moneyAwardedSoFar*: int
 
 proc newRoulette*(pos: Vector3): Roulette =
   result = Roulette()
@@ -25,6 +28,9 @@ proc newRoulette*(pos: Vector3): Roulette =
   result.playerBet = 0
   result.betNumber = -1
   result.timer = 0.0
+  result.moneyAwarded = false
+  result.moneyToAward = 0
+  result.moneyAwardedSoFar = 0
 
 proc draw3D*(roulette: Roulette) =
   # Base table
@@ -136,6 +142,9 @@ proc play*(roulette: Roulette, player: Player): bool =
         roulette.state = Spinning
         roulette.spinSpeed = 15.0 + rand(10.0)
         roulette.timer = 0.0
+        roulette.moneyAwarded = false
+        roulette.moneyToAward = 0
+        roulette.moneyAwardedSoFar = 0
     
     drawMinigameUI("ROULETTE", player, messages)
     
@@ -147,6 +156,7 @@ proc play*(roulette: Roulette, player: Player): bool =
       return true
   
   elif roulette.state == Spinning:
+    roulette.update(getFrameTime())  # Call update to handle spin logic
     var messages: seq[string] = @[]
     messages.add("=== SPINNING ===")
     messages.add("")
@@ -161,14 +171,29 @@ proc play*(roulette: Roulette, player: Player): bool =
     messages.add("Your number: " & $roulette.betNumber)
     messages.add("")
     
-    if roulette.selectedNumber == roulette.betNumber:
-      let winnings = roulette.playerBet * 10
-      player.addMoney(winnings)
-      messages.add("YOU WIN!")
-      messages.add("Won: " & formatMoney(winnings))
+    if not roulette.moneyAwarded:
+      if roulette.selectedNumber == roulette.betNumber:
+        roulette.moneyToAward = roulette.playerBet * 10
+        messages.add("YOU WIN!")
+        messages.add("Won: " & formatMoney(roulette.moneyToAward))
+      else:
+        roulette.moneyToAward = 0
+        messages.add("YOU LOSE")
+        messages.add("Lost: " & formatMoney(roulette.playerBet))
+      roulette.moneyAwarded = true
     else:
-      messages.add("YOU LOSE")
-      messages.add("Lost: " & formatMoney(roulette.playerBet))
+      # Award money incrementally
+      if roulette.moneyAwardedSoFar < roulette.moneyToAward:
+        let increment = min(10, roulette.moneyToAward - roulette.moneyAwardedSoFar)
+        player.addMoney(increment)
+        roulette.moneyAwardedSoFar += increment
+      
+      if roulette.selectedNumber == roulette.betNumber:
+        messages.add("YOU WIN!")
+        messages.add("Won: " & formatMoney(roulette.moneyToAward))
+      else:
+        messages.add("YOU LOSE")
+        messages.add("Lost: " & formatMoney(roulette.playerBet))
     
     messages.add("")
     messages.add("Press any key to continue...")
