@@ -17,6 +17,9 @@ type
     state*: BlackjackState
     bet*: int
     dealerRevealed*: bool
+    moneyAwarded*: bool
+    moneyToAward*: int
+    moneyAwardedSoFar*: int
 
 const 
   SUITS = ["♥", "♦", "♣", "♠"]
@@ -62,6 +65,9 @@ proc newBlackjack*(pos: Vector3): Blackjack =
   result.state = Betting
   result.bet = 0
   result.dealerRevealed = false
+  result.moneyAwarded = false
+  result.moneyToAward = 0
+  result.moneyAwardedSoFar = 0
 
 proc draw3D*(blackjack: Blackjack) =
   # Table
@@ -176,6 +182,9 @@ proc play*(blackjack: Blackjack, player: Player): bool =
     
     if playerValue > 21:
       blackjack.state = Result
+      blackjack.moneyAwarded = false
+      blackjack.moneyToAward = 0
+      blackjack.moneyAwardedSoFar = 0
     else:
       messages.add("[H] Hit (take another card)")
       messages.add("[S] Stand (end turn)")
@@ -185,6 +194,9 @@ proc play*(blackjack: Blackjack, player: Player): bool =
     elif isKeyPressed(S) and playerValue <= 21:
       blackjack.state = DealerTurn
       blackjack.dealerRevealed = true
+      blackjack.moneyAwarded = false
+      blackjack.moneyToAward = 0
+      blackjack.moneyAwardedSoFar = 0
     
     drawMinigameUI("BLACKJACK", player, messages)
   
@@ -247,27 +259,53 @@ proc play*(blackjack: Blackjack, player: Player): bool =
     messages.add("Total: " & $dealerValue)
     messages.add("")
     
-    # Determine winner
-    if playerValue > 21:
-      messages.add("BUST! You lose")
-      messages.add("Lost: " & formatMoney(blackjack.bet))
-    elif dealerValue > 21:
-      let winnings = blackjack.bet * 2
-      player.addMoney(winnings)
-      messages.add("Dealer busts! YOU WIN!")
-      messages.add("Won: " & formatMoney(winnings))
-    elif playerValue > dealerValue:
-      let winnings = blackjack.bet * 2
-      player.addMoney(winnings)
-      messages.add("YOU WIN!")
-      messages.add("Won: " & formatMoney(winnings))
-    elif playerValue == dealerValue:
-      player.addMoney(blackjack.bet)
-      messages.add("PUSH - It's a tie")
-      messages.add("Bet returned")
+    # Determine winner and award money incrementally
+    if not blackjack.moneyAwarded:
+      # First time showing result - determine total winnings
+      if playerValue > 21:
+        blackjack.moneyToAward = 0
+        messages.add("BUST! You lose")
+        messages.add("Lost: " & formatMoney(blackjack.bet))
+      elif dealerValue > 21:
+        blackjack.moneyToAward = blackjack.bet * 2
+        messages.add("Dealer busts! YOU WIN!")
+        messages.add("Won: " & formatMoney(blackjack.moneyToAward))
+      elif playerValue > dealerValue:
+        blackjack.moneyToAward = blackjack.bet * 2
+        messages.add("YOU WIN!")
+        messages.add("Won: " & formatMoney(blackjack.moneyToAward))
+      elif playerValue == dealerValue:
+        blackjack.moneyToAward = blackjack.bet
+        messages.add("PUSH - It's a tie")
+        messages.add("Bet returned")
+      else:
+        blackjack.moneyToAward = 0
+        messages.add("Dealer wins")
+        messages.add("Lost: " & formatMoney(blackjack.bet))
+      blackjack.moneyAwarded = true
     else:
-      messages.add("Dealer wins")
-      messages.add("Lost: " & formatMoney(blackjack.bet))
+      # Already determined winner, now award money in increments
+      if blackjack.moneyAwardedSoFar < blackjack.moneyToAward:
+        let increment = min(10, blackjack.moneyToAward - blackjack.moneyAwardedSoFar)
+        player.addMoney(increment)
+        blackjack.moneyAwardedSoFar += increment
+      
+      # Show result message
+      if playerValue > 21:
+        messages.add("BUST! You lose")
+        messages.add("Lost: " & formatMoney(blackjack.bet))
+      elif dealerValue > 21:
+        messages.add("Dealer busts! YOU WIN!")
+        messages.add("Won: " & formatMoney(blackjack.moneyToAward))
+      elif playerValue > dealerValue:
+        messages.add("YOU WIN!")
+        messages.add("Won: " & formatMoney(blackjack.moneyToAward))
+      elif playerValue == dealerValue:
+        messages.add("PUSH - It's a tie")
+        messages.add("Bet returned")
+      else:
+        messages.add("Dealer wins")
+        messages.add("Lost: " & formatMoney(blackjack.bet))
     
     messages.add("")
     messages.add("Press any key to continue...")

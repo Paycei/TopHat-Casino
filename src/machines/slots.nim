@@ -13,6 +13,9 @@ type
     state*: SlotState
     bet*: int
     timer*: float
+    moneyAwarded*: bool
+    moneyToAward*: int
+    moneyAwardedSoFar*: int
 
 const SYMBOLS = ["7", "BAR", "🍒", "🍋", "⭐"]
 
@@ -25,6 +28,9 @@ proc newSlots*(pos: Vector3): Slots =
   result.state = Idle
   result.bet = 0
   result.timer = 0.0
+  result.moneyAwarded = false
+  result.moneyToAward = 0
+  result.moneyAwardedSoFar = 0
 
 proc draw3D*(slots: Slots) =
   # Machine body
@@ -122,6 +128,9 @@ proc play*(slots: Slots, player: Player): bool =
       if isKeyPressed(Space):
         slots.state = Spinning
         slots.spinProgress = [0.0, 0.0, 0.0]
+        slots.moneyAwarded = false
+        slots.moneyToAward = 0
+        slots.moneyAwardedSoFar = 0
         for i in 0..2:
           slots.targetReels[i] = rand(SYMBOLS.len - 1)
     
@@ -134,6 +143,7 @@ proc play*(slots: Slots, player: Player): bool =
       return true
   
   elif slots.state == Spinning:
+    slots.update(getFrameTime())  # Call update to handle spin logic
     var messages: seq[string] = @[]
     messages.add("=== SPINNING ===")
     messages.add("")
@@ -159,26 +169,48 @@ proc play*(slots: Slots, player: Player): bool =
     messages.add(SYMBOLS[slots.reels[0]] & " | " & SYMBOLS[slots.reels[1]] & " | " & SYMBOLS[slots.reels[2]])
     messages.add("")
     
-    # Check win
-    let r0 = slots.reels[0]
-    let r1 = slots.reels[1]
-    let r2 = slots.reels[2]
-    
-    if r0 == r1 and r1 == r2:
-      # Three of a kind
-      let winnings = slots.bet * 10
-      player.addMoney(winnings)
-      messages.add("JACKPOT! THREE OF A KIND!")
-      messages.add("Won: " & formatMoney(winnings))
-    elif r0 == r1 or r1 == r2 or r0 == r2:
-      # Two of a kind
-      let winnings = slots.bet * 2
-      player.addMoney(winnings)
-      messages.add("WIN! TWO OF A KIND!")
-      messages.add("Won: " & formatMoney(winnings))
+    if not slots.moneyAwarded:
+      # Check win and determine total winnings
+      let r0 = slots.reels[0]
+      let r1 = slots.reels[1]
+      let r2 = slots.reels[2]
+      
+      if r0 == r1 and r1 == r2:
+        # Three of a kind
+        slots.moneyToAward = slots.bet * 10
+        messages.add("JACKPOT! THREE OF A KIND!")
+        messages.add("Won: " & formatMoney(slots.moneyToAward))
+      elif r0 == r1 or r1 == r2 or r0 == r2:
+        # Two of a kind
+        slots.moneyToAward = slots.bet * 2
+        messages.add("WIN! TWO OF A KIND!")
+        messages.add("Won: " & formatMoney(slots.moneyToAward))
+      else:
+        slots.moneyToAward = 0
+        messages.add("NO MATCH")
+        messages.add("Lost: " & formatMoney(slots.bet))
+      slots.moneyAwarded = true
     else:
-      messages.add("NO MATCH")
-      messages.add("Lost: " & formatMoney(slots.bet))
+      # Award money incrementally
+      if slots.moneyAwardedSoFar < slots.moneyToAward:
+        let increment = min(10, slots.moneyToAward - slots.moneyAwardedSoFar)
+        player.addMoney(increment)
+        slots.moneyAwardedSoFar += increment
+      
+      # Show same messages without recalculating
+      let r0 = slots.reels[0]
+      let r1 = slots.reels[1]
+      let r2 = slots.reels[2]
+      
+      if r0 == r1 and r1 == r2:
+        messages.add("JACKPOT! THREE OF A KIND!")
+        messages.add("Won: " & formatMoney(slots.moneyToAward))
+      elif r0 == r1 or r1 == r2 or r0 == r2:
+        messages.add("WIN! TWO OF A KIND!")
+        messages.add("Won: " & formatMoney(slots.moneyToAward))
+      else:
+        messages.add("NO MATCH")
+        messages.add("Lost: " & formatMoney(slots.bet))
     
     messages.add("")
     messages.add("Press any key to continue...")
