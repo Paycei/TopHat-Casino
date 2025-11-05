@@ -13,6 +13,7 @@ proc main() =
   # Initialize window
   initWindow(SCREEN_WIDTH, SCREEN_HEIGHT, TITLE)
   setTargetFPS(60)
+  setExitKey(Null)  # Disable ESC from closing window
   
   # Create game
   let gameInstance = newGame()

@@ -5,9 +5,11 @@ type
   Card = object
     value: int
     suit: string
+    slideOffset: float  # Animation offset
+    flipProgress: float  # For flip animation
   
   BlackjackState = enum
-    Betting, PlayerTurn, DealerTurn, Result
+    Betting, Dealing, PlayerTurn, DealerTurn, Result
   
   Blackjack* = ref object
     position*: Vector3
@@ -20,18 +22,27 @@ type
     moneyAwarded*: bool
     moneyToAward*: int
     moneyAwardedSoFar*: int
+    moneyTimer*: float
+    dealTimer*: float  # For dealing animation
+    cardsToDeal*: int  # Track dealing progress
+    pulseTimer*: float  # For winning card pulse
+    chipStackHeight*: float  # Animated chip stack
+    dealerThinkTimer*: float  # Pause before dealer acts
+    transitionTimer*: float  # Smooth state transitions
 
 const 
   SUITS = ["♥", "♦", "♣", "♠"]
-  CARD_VALUES = [2, 3, 4, 5, 6, 7, 8, 9, 10, 10, 10, 10, 11]  # J, Q, K = 10, A = 11
+  CARD_VALUES = [2, 3, 4, 5, 6, 7, 8, 9, 10, 10, 10, 10, 11]
 
 proc newCard(): Card =
   result.value = CARD_VALUES[rand(CARD_VALUES.len - 1)]
   result.suit = SUITS[rand(SUITS.len - 1)]
+  result.slideOffset = 1.0  # Start off screen
+  result.flipProgress = 0.0
 
 proc createDeck(): seq[Card] =
   result = @[]
-  for _ in 0..51:  # 52 card deck
+  for _ in 0..51:
     result.add(newCard())
 
 proc calculateHandValue(hand: seq[Card]): int =
@@ -43,7 +54,6 @@ proc calculateHandValue(hand: seq[Card]): int =
     if card.value == 11:
       aces += 1
   
-  # Adjust for aces
   while result > 21 and aces > 0:
     result -= 10
     aces -= 1
@@ -68,12 +78,20 @@ proc newBlackjack*(pos: Vector3): Blackjack =
   result.moneyAwarded = false
   result.moneyToAward = 0
   result.moneyAwardedSoFar = 0
+  result.moneyTimer = 0.0
+  result.dealTimer = 0.0
+  result.cardsToDeal = 0
+  result.pulseTimer = 0.0
+  result.chipStackHeight = 0.0
+  result.dealerThinkTimer = 0.0
+  result.transitionTimer = 0.0
 
 proc draw3D*(blackjack: Blackjack) =
-  # Table
+  # Table with subtle animations
+  let tableBob = sin(getTime() * 0.5) * 0.01
   let tablePos = Vector3(
     x: blackjack.position.x,
-    y: blackjack.position.y + 0.5,
+    y: blackjack.position.y + 0.5 + tableBob,
     z: blackjack.position.z
   )
   drawCube(tablePos, 3.0, 0.2, 2.0, DarkGreen)
@@ -89,36 +107,149 @@ proc draw3D*(blackjack: Blackjack) =
       )
       drawCube(legPos, 0.15, 1.0, 0.15, DarkBrown)
   
-  # Card placeholder spots
+  # Animated chip stack based on bet
+  if blackjack.chipStackHeight > 0.0:
+    let chipPos = Vector3(
+      x: tablePos.x,
+      y: tablePos.y + 0.15 + blackjack.chipStackHeight * 0.05,
+      z: tablePos.z + 0.5
+    )
+    let chips = int(blackjack.chipStackHeight)
+    for i in 0..<chips:
+      let stackPos = Vector3(
+        x: chipPos.x,
+        y: chipPos.y + i.float * 0.05,
+        z: chipPos.z
+      )
+      drawCylinder(stackPos, 0.15, 0.15, 0.04, 8, Gold)
+      drawCylinderWires(stackPos, 0.15, 0.15, 0.04, 8, DarkGray)
+  
+  # Card placeholder spots with animated positions
+  let pulse = if blackjack.pulseTimer > 0.0: 
+                sin(blackjack.pulseTimer * 10.0) * 0.05 + 1.0
+              else: 1.0
+  
+  # Player cards area
   let cardPos1 = Vector3(
     x: tablePos.x - 0.5,
     y: tablePos.y + 0.11,
     z: tablePos.z
   )
-  drawCube(cardPos1, 0.4, 0.01, 0.6, White)
+  drawCube(cardPos1, 0.4 * pulse, 0.01, 0.6 * pulse, White)
   
+  # Dealer cards area
   let cardPos2 = Vector3(
     x: tablePos.x + 0.5,
     y: tablePos.y + 0.11,
     z: tablePos.z
   )
   drawCube(cardPos2, 0.4, 0.01, 0.6, White)
+  
+  # Draw card representations as small cubes with slide animation
+  for i, card in blackjack.playerHand:
+    let slideIn = 1.0 - card.slideOffset
+    let cardVisPos = Vector3(
+      x: tablePos.x - 0.8 + i.float * 0.15 + card.slideOffset * -2.0,
+      y: tablePos.y + 0.15 + (1.0 - slideIn) * 0.5,
+      z: tablePos.z - 0.3
+    )
+    drawCube(cardVisPos, 0.12, 0.01, 0.18, White)
+    if blackjack.pulseTimer > 0.0:
+      drawCubeWires(cardVisPos, 0.13, 0.02, 0.19, Gold)
+  
+  for i, card in blackjack.dealerHand:
+    let slideIn = 1.0 - card.slideOffset
+    # Second dealer card flips
+    let isHidden = i == 1 and not blackjack.dealerRevealed
+    let flipScale = if isHidden: abs(cos(card.flipProgress * PI)) else: 1.0
+    
+    let cardVisPos = Vector3(
+      x: tablePos.x + 0.8 - i.float * 0.15 + card.slideOffset * 2.0,
+      y: tablePos.y + 0.15 + (1.0 - slideIn) * 0.5,
+      z: tablePos.z + 0.3
+    )
+    
+    let cardColor = if isHidden: Red else: White
+    drawCube(cardVisPos, 0.12 * flipScale, 0.01, 0.18, cardColor)
+
+proc update*(blackjack: Blackjack, deltaTime: float) =
+  # Update card slide animations
+  for card in blackjack.playerHand.mitems:
+    if card.slideOffset > 0.0:
+      card.slideOffset -= deltaTime * 3.0
+      if card.slideOffset < 0.0:
+        card.slideOffset = 0.0
+  
+  for card in blackjack.dealerHand.mitems:
+    if card.slideOffset > 0.0:
+      card.slideOffset -= deltaTime * 3.0
+      if card.slideOffset < 0.0:
+        card.slideOffset = 0.0
+    
+    # Update flip animation for dealer's hidden card
+    if not blackjack.dealerRevealed and card.flipProgress < 1.0:
+      card.flipProgress += deltaTime * 2.0
+      if card.flipProgress > 1.0:
+        card.flipProgress = 1.0
+  
+  # Update chip stack animation
+  let targetHeight = if blackjack.bet > 0: 
+                       float(blackjack.bet div 10) 
+                     else: 0.0
+  
+  if blackjack.chipStackHeight < targetHeight:
+    blackjack.chipStackHeight += deltaTime * 10.0
+    if blackjack.chipStackHeight > targetHeight:
+      blackjack.chipStackHeight = targetHeight
+  elif blackjack.chipStackHeight > targetHeight:
+    blackjack.chipStackHeight -= deltaTime * 10.0
+    if blackjack.chipStackHeight < targetHeight:
+      blackjack.chipStackHeight = targetHeight
+  
+  # Update pulse timer
+  if blackjack.pulseTimer > 0.0:
+    blackjack.pulseTimer -= deltaTime
+    if blackjack.pulseTimer < 0.0:
+      blackjack.pulseTimer = 0.0
+  
+  # Update dealer think timer
+  if blackjack.dealerThinkTimer > 0.0:
+    blackjack.dealerThinkTimer -= deltaTime
+  
+  # Update transition timer
+  if blackjack.transitionTimer > 0.0:
+    blackjack.transitionTimer -= deltaTime
 
 proc dealInitialCards(blackjack: Blackjack) =
   blackjack.deck = createDeck()
   blackjack.playerHand = @[]
   blackjack.dealerHand = @[]
   blackjack.dealerRevealed = false
-  
-  # Deal 2 cards each
-  for _ in 0..1:
-    blackjack.playerHand.add(newCard())
-    blackjack.dealerHand.add(newCard())
+  blackjack.state = Dealing
+  blackjack.cardsToDeal = 4
+  blackjack.dealTimer = 0.0
+
+proc dealNextCard(blackjack: Blackjack) =
+  # Deal cards one at a time with timing
+  if blackjack.cardsToDeal > 0:
+    var card = newCard()
+    card.slideOffset = 1.0
+    
+    if blackjack.cardsToDeal == 4 or blackjack.cardsToDeal == 2:
+      blackjack.playerHand.add(card)
+    else:
+      blackjack.dealerHand.add(card)
+    
+    blackjack.cardsToDeal -= 1
 
 proc hit(blackjack: Blackjack) =
-  blackjack.playerHand.add(newCard())
+  var card = newCard()
+  card.slideOffset = 1.0
+  blackjack.playerHand.add(card)
 
 proc play*(blackjack: Blackjack, player: Player): bool =
+  blackjack.update(getFrameTime())
+  
   case blackjack.state:
   of Betting:
     var messages: seq[string] = @[]
@@ -136,7 +267,6 @@ proc play*(blackjack: Blackjack, player: Player): bool =
       if player.removeMoney(10):
         blackjack.bet = 10
         dealInitialCards(blackjack)
-        blackjack.state = PlayerTurn
       else:
         messages.add("")
         messages.add("Not enough money!")
@@ -144,7 +274,6 @@ proc play*(blackjack: Blackjack, player: Player): bool =
       if player.removeMoney(50):
         blackjack.bet = 50
         dealInitialCards(blackjack)
-        blackjack.state = PlayerTurn
       else:
         messages.add("")
         messages.add("Not enough money!")
@@ -152,7 +281,6 @@ proc play*(blackjack: Blackjack, player: Player): bool =
       if player.removeMoney(100):
         blackjack.bet = 100
         dealInitialCards(blackjack)
-        blackjack.state = PlayerTurn
       else:
         messages.add("")
         messages.add("Not enough money!")
@@ -162,22 +290,35 @@ proc play*(blackjack: Blackjack, player: Player): bool =
     if isKeyPressed(Escape):
       return true
   
+  of Dealing:
+    blackjack.dealTimer += getFrameTime()
+    
+    if blackjack.dealTimer >= 0.4 and blackjack.cardsToDeal > 0:
+      dealNextCard(blackjack)
+      blackjack.dealTimer = 0.0
+    
+    if blackjack.cardsToDeal == 0:
+      blackjack.state = PlayerTurn
+      blackjack.transitionTimer = 0.5
+    
+    var messages: seq[string] = @[]
+    messages.add("=== DEALING ===")
+    drawMinigameUI("BLACKJACK", player, messages)
+  
   of PlayerTurn:
+    if blackjack.transitionTimer > 0.0:
+      var messages: seq[string] = @[]
+      messages.add("=== YOUR TURN ===")
+      drawMinigameUI("BLACKJACK", player, messages)
+      return false
+    
     var messages: seq[string] = @[]
     messages.add("=== YOUR TURN ===")
     messages.add("")
-    messages.add("Dealer shows: " & cardToString(blackjack.dealerHand[0]) & " [?]")
-    messages.add("")
-    
-    var playerCards = "Your hand: "
-    for i, card in blackjack.playerHand:
-      playerCards &= cardToString(card)
-      if i < blackjack.playerHand.len - 1:
-        playerCards &= ", "
-    messages.add(playerCards)
     
     let playerValue = calculateHandValue(blackjack.playerHand)
-    messages.add("Total: " & $playerValue)
+    messages.add("You: " & $playerValue)
+    messages.add("Dealer: " & $blackjack.dealerHand[0].value & " + ?")
     messages.add("")
     
     if playerValue > 21:
@@ -185,18 +326,23 @@ proc play*(blackjack: Blackjack, player: Player): bool =
       blackjack.moneyAwarded = false
       blackjack.moneyToAward = 0
       blackjack.moneyAwardedSoFar = 0
+      blackjack.moneyTimer = 0.0
+      blackjack.transitionTimer = 0.8
     else:
-      messages.add("[H] Hit (take another card)")
-      messages.add("[S] Stand (end turn)")
+      messages.add("[H] Hit   [S] Stand")
     
     if isKeyPressed(H) and playerValue <= 21:
       hit(blackjack)
     elif isKeyPressed(S) and playerValue <= 21:
       blackjack.state = DealerTurn
       blackjack.dealerRevealed = true
+      blackjack.dealerThinkTimer = 1.0
       blackjack.moneyAwarded = false
       blackjack.moneyToAward = 0
       blackjack.moneyAwardedSoFar = 0
+      blackjack.moneyTimer = 0.0
+      if blackjack.dealerHand.len > 1:
+        blackjack.dealerHand[1].flipProgress = 0.0
     
     drawMinigameUI("BLACKJACK", player, messages)
   
@@ -205,35 +351,38 @@ proc play*(blackjack: Blackjack, player: Player): bool =
     messages.add("=== DEALER'S TURN ===")
     messages.add("")
     
-    var dealerCards = "Dealer: "
-    for i, card in blackjack.dealerHand:
-      dealerCards &= cardToString(card)
-      if i < blackjack.dealerHand.len - 1:
-        dealerCards &= ", "
-    messages.add(dealerCards)
-    
     let dealerValue = calculateHandValue(blackjack.dealerHand)
-    messages.add("Total: " & $dealerValue)
-    messages.add("")
+    messages.add("Dealer: " & $dealerValue)
     
-    # Dealer hits on 16 or less
-    if dealerValue < 17:
-      messages.add("Dealer hits...")
-      blackjack.dealerHand.add(newCard())
+    if blackjack.dealerThinkTimer > 0.0:
+      messages.add("")
+      messages.add("Thinking...")
     else:
-      messages.add("Dealer stands")
-      blackjack.state = Result
-    
-    messages.add("")
-    messages.add("Press any key to continue...")
+      if dealerValue < 17:
+        messages.add("Dealer hits")
+        var card = newCard()
+        card.slideOffset = 1.0
+        blackjack.dealerHand.add(card)
+        blackjack.dealerThinkTimer = 1.0
+      else:
+        messages.add("Dealer stands")
+        blackjack.state = Result
+        blackjack.transitionTimer = 0.8
     
     drawMinigameUI("BLACKJACK", player, messages)
     
     if isKeyPressed(Space) or isKeyPressed(Enter):
       if dealerValue >= 17 or dealerValue > 21:
         blackjack.state = Result
+        blackjack.transitionTimer = 0.8
   
   of Result:
+    if blackjack.transitionTimer > 0.0:
+      var messages: seq[string] = @[]
+      messages.add("=== RESULT ===")
+      drawMinigameUI("BLACKJACK", player, messages)
+      return false
+    
     var messages: seq[string] = @[]
     messages.add("=== RESULT ===")
     messages.add("")
@@ -241,80 +390,85 @@ proc play*(blackjack: Blackjack, player: Player): bool =
     let playerValue = calculateHandValue(blackjack.playerHand)
     let dealerValue = calculateHandValue(blackjack.dealerHand)
     
-    var playerCards = "You: "
-    for i, card in blackjack.playerHand:
-      playerCards &= cardToString(card)
-      if i < blackjack.playerHand.len - 1:
-        playerCards &= ", "
-    messages.add(playerCards)
-    messages.add("Total: " & $playerValue)
+    messages.add("You: " & $playerValue)
+    messages.add("Dealer: " & $dealerValue)
     messages.add("")
     
-    var dealerCards = "Dealer: "
-    for i, card in blackjack.dealerHand:
-      dealerCards &= cardToString(card)
-      if i < blackjack.dealerHand.len - 1:
-        dealerCards &= ", "
-    messages.add(dealerCards)
-    messages.add("Total: " & $dealerValue)
-    messages.add("")
-    
-    # Determine winner and award money incrementally
     if not blackjack.moneyAwarded:
-      # First time showing result - determine total winnings
       if playerValue > 21:
         blackjack.moneyToAward = 0
-        messages.add("BUST! You lose")
+        messages.add("💥 BUST! You lose")
         messages.add("Lost: " & formatMoney(blackjack.bet))
       elif dealerValue > 21:
         blackjack.moneyToAward = blackjack.bet * 2
-        messages.add("Dealer busts! YOU WIN!")
+        blackjack.pulseTimer = 2.0
+        messages.add("🎉 Dealer busts! YOU WIN!")
         messages.add("Won: " & formatMoney(blackjack.moneyToAward))
       elif playerValue > dealerValue:
         blackjack.moneyToAward = blackjack.bet * 2
-        messages.add("YOU WIN!")
+        blackjack.pulseTimer = 2.0
+        messages.add("🎉 YOU WIN!")
         messages.add("Won: " & formatMoney(blackjack.moneyToAward))
       elif playerValue == dealerValue:
         blackjack.moneyToAward = blackjack.bet
-        messages.add("PUSH - It's a tie")
+        messages.add("🤝 PUSH - It's a tie")
         messages.add("Bet returned")
       else:
         blackjack.moneyToAward = 0
-        messages.add("Dealer wins")
+        messages.add("😞 Dealer wins")
         messages.add("Lost: " & formatMoney(blackjack.bet))
       blackjack.moneyAwarded = true
     else:
-      # Already determined winner, now award money in increments
-      if blackjack.moneyAwardedSoFar < blackjack.moneyToAward:
-        let increment = min(10, blackjack.moneyToAward - blackjack.moneyAwardedSoFar)
+      blackjack.moneyTimer += getFrameTime()
+      
+      if blackjack.moneyTimer >= 0.08 and blackjack.moneyAwardedSoFar < blackjack.moneyToAward:
+        blackjack.moneyTimer = 0.0
+        
+        var increment: int
+        if blackjack.moneyToAward < 100:
+          increment = 5
+        elif blackjack.moneyToAward < 500:
+          increment = 10
+        elif blackjack.moneyToAward < 1000:
+          increment = 25
+        else:
+          increment = 50
+        
+        increment = min(increment, blackjack.moneyToAward - blackjack.moneyAwardedSoFar)
         player.addMoney(increment)
         blackjack.moneyAwardedSoFar += increment
       
-      # Show result message
       if playerValue > 21:
-        messages.add("BUST! You lose")
+        messages.add("💥 BUST! You lose")
         messages.add("Lost: " & formatMoney(blackjack.bet))
       elif dealerValue > 21:
-        messages.add("Dealer busts! YOU WIN!")
+        messages.add("🎉 Dealer busts! YOU WIN!")
         messages.add("Won: " & formatMoney(blackjack.moneyToAward))
       elif playerValue > dealerValue:
-        messages.add("YOU WIN!")
+        messages.add("🎉 YOU WIN!")
         messages.add("Won: " & formatMoney(blackjack.moneyToAward))
       elif playerValue == dealerValue:
-        messages.add("PUSH - It's a tie")
+        messages.add("🤝 PUSH - It's a tie")
         messages.add("Bet returned")
       else:
-        messages.add("Dealer wins")
+        messages.add("😞 Dealer wins")
         messages.add("Lost: " & formatMoney(blackjack.bet))
     
     messages.add("")
-    messages.add("Press any key to continue...")
+    
+    # Only allow exit when all money is awarded
+    if blackjack.moneyAwardedSoFar >= blackjack.moneyToAward:
+      messages.add("Press any key to continue...")
+    else:
+      messages.add("Awarding winnings...")
     
     drawMinigameUI("BLACKJACK", player, messages)
     
-    if isKeyPressed(Space) or isKeyPressed(Enter) or isKeyPressed(Escape):
+    # Only allow exit after money is fully awarded
+    if blackjack.moneyAwardedSoFar >= blackjack.moneyToAward and (isKeyPressed(Space) or isKeyPressed(Enter) or isKeyPressed(Escape)):
       blackjack.state = Betting
       blackjack.bet = 0
+      blackjack.pulseTimer = 0.0
       return true
   
   return false
