@@ -1,4 +1,4 @@
-import raylib, math, random
+import raylib, rlgl, math, random
 import ../utils, ../player, ../ui
 
 type
@@ -87,6 +87,12 @@ proc newBlackjack*(pos: Vector3): Blackjack =
   result.transitionTimer = 0.0
 
 proc draw3D*(blackjack: Blackjack) =
+  # --- Rotar 180° en Y para que mire hacia el jugador ---
+  pushMatrix()
+  translatef(blackjack.position.x, blackjack.position.y, blackjack.position.z)
+  rotatef(180, 0, 1, 0)
+  translatef(-blackjack.position.x, -blackjack.position.y, -blackjack.position.z)
+  
   # Table with subtle animations
   let tableBob = sin(getTime() * 0.5) * 0.01
   let tablePos = Vector3(
@@ -159,7 +165,6 @@ proc draw3D*(blackjack: Blackjack) =
   
   for i, card in blackjack.dealerHand:
     let slideIn = 1.0 - card.slideOffset
-    # Second dealer card flips
     let isHidden = i == 1 and not blackjack.dealerRevealed
     let flipScale = if isHidden: abs(cos(card.flipProgress * PI)) else: 1.0
     
@@ -171,6 +176,9 @@ proc draw3D*(blackjack: Blackjack) =
     
     let cardColor = if isHidden: Red else: White
     drawCube(cardVisPos, 0.12 * flipScale, 0.01, 0.18, cardColor)
+  
+  # --- Restaurar matriz ---
+  popMatrix()
 
 proc update*(blackjack: Blackjack, deltaTime: float) =
   # Update card slide animations
