@@ -25,8 +25,10 @@ type
     flashTimer*: float
     particleTimer*: float
     particles*: seq[tuple[x, y, life: float]]
+    symbolRotation*: array[3, float]  # Add rotation for each reel
+    bounceOffset*: array[3, float]    # Add bounce effect when stopping
 
-const SYMBOLS = ["7", "BAR", "🍒", "🍋", "⭐"]
+const SYMBOLS = ["7", "BAR", "🍒", "🍋", "⭐", "💎", "🔔"]
 
 proc easeOutCubic(t: float): float =
   let t2 = 1.0 - t
@@ -53,8 +55,15 @@ proc newSlots*(pos: Vector3): Slots =
   result.flashTimer = 0.0
   result.particleTimer = 0.0
   result.particles = @[]
+  result.symbolRotation = [0.0, 0.0, 0.0]
+  result.bounceOffset = [0.0, 0.0, 0.0]
 
-proc drawSymbol3D(symbol: string, pos: Vector3, size: float, color: Color) =
+proc drawSymbol3D(symbol: string, pos: Vector3, size: float, color: Color, rotation: float = 0.0) =
+  pushMatrix()
+  translatef(pos.x, pos.y, pos.z)
+  rotatef(rotation * 360.0, 0, 0, 1)  # Rotate around Z axis
+  translatef(-pos.x, -pos.y, -pos.z)
+  
   case symbol:
   of "7":
     drawCube(Vector3(x: pos.x, y: pos.y + size * 0.3, z: pos.z), size * 0.6, size * 0.1, size * 0.1, color)
@@ -78,8 +87,49 @@ proc drawSymbol3D(symbol: string, pos: Vector3, size: float, color: Color) =
       let px = pos.x + cos(angle) * size * 0.3
       let py = pos.y + sin(angle) * size * 0.3
       drawSphere(Vector3(x: px, y: py, z: pos.z), size * 0.1, Gold)
+  of "💎":
+    # Draw diamond shape with multiple layers for sparkle effect
+    let cyan = Color(r: 0, g: 255, b: 255, a: 255)
+    let lightCyan = Color(r: 100, g: 255, b: 255, a: 255)
+    
+    # Bottom pyramid
+    drawCube(Vector3(x: pos.x, y: pos.y - size * 0.15, z: pos.z), 
+             size * 0.35, size * 0.2, size * 0.1, cyan)
+    # Top pyramid
+    drawCube(Vector3(x: pos.x, y: pos.y + size * 0.15, z: pos.z), 
+             size * 0.35, size * 0.2, size * 0.1, lightCyan)
+    # Center octahedron
+    drawSphere(pos, size * 0.18, Skyblue)
+    # Sparkle points
+    for i in 0..3:
+      let angle = i.float * PI * 0.5
+      let px = pos.x + cos(angle) * size * 0.25
+      let py = pos.y + sin(angle) * size * 0.25
+      drawSphere(Vector3(x: px, y: py, z: pos.z), size * 0.05, White)
+  of "🔔":
+    # Draw bell shape
+    let bellGold = Color(r: 255, g: 215, b: 0, a: 255)
+    let darkGold = Color(r: 200, g: 170, b: 0, a: 255)
+    
+    # Bell body (wider at bottom)
+    drawSphere(Vector3(x: pos.x, y: pos.y + size * 0.05, z: pos.z), size * 0.18, bellGold)
+    drawCube(Vector3(x: pos.x, y: pos.y - size * 0.08, z: pos.z), 
+             size * 0.35, size * 0.15, size * 0.1, bellGold)
+    
+    # Bell top/crown
+    drawCube(Vector3(x: pos.x, y: pos.y + size * 0.25, z: pos.z), 
+             size * 0.12, size * 0.08, size * 0.08, darkGold)
+    
+    # Bell clapper (small sphere at bottom)
+    drawSphere(Vector3(x: pos.x, y: pos.y - size * 0.22, z: pos.z), size * 0.08, Gray)
+    
+    # Shine effect on bell
+    drawSphere(Vector3(x: pos.x - size * 0.1, y: pos.y + size * 0.1, z: pos.z), 
+               size * 0.05, Color(r: 255, g: 255, b: 200, a: 255))
   else:
     drawCube(pos, size, size, size * 0.1, color)
+  
+  popMatrix()
 
 proc draw3D*(slots: Slots) =
   pushMatrix()
@@ -109,9 +159,10 @@ proc draw3D*(slots: Slots) =
 
   drawCubeWires(bodyPos, 2.0, 2.0, 0.5, Gold)
   for i in 0..2:
+    let bounceY = slots.bounceOffset[i]
     let reelPos = Vector3(
       x: slots.position.x - 0.6 + i.float * 0.6,
-      y: bodyPos.y + 0.3 + slots.reelOffset[i] + shakeOffset.y,
+      y: bodyPos.y + 0.3 + slots.reelOffset[i] + shakeOffset.y + bounceY,
       z: slots.position.z - 0.26
     )
 
@@ -128,14 +179,19 @@ proc draw3D*(slots: Slots) =
       let current = SYMBOLS[slots.reels[i]]
       let next = SYMBOLS[(slots.reels[i] + 1) mod SYMBOLS.len]
       let currentY = reelPos.y + offset * 0.8
-      drawSymbol3D(current, Vector3(x: reelPos.x, y: currentY, z: reelPos.z - 0.02), 0.35, White)
+      let spinRotation = slots.spinProgress[i] * 2.0  # Rotate while spinning
+      drawSymbol3D(current, Vector3(x: reelPos.x, y: currentY, z: reelPos.z - 0.02), 
+                   0.35, White, spinRotation)
       let nextY = reelPos.y - (1.0 - offset) * 0.8
       let alpha = uint8(255.0 * offset)
       drawSymbol3D(next, Vector3(x: reelPos.x, y: nextY, z: reelPos.z - 0.02), 
-                   0.35, Color(r: 255, g: 255, b: 255, a: alpha))
+                   0.35, Color(r: 255, g: 255, b: 255, a: alpha), spinRotation)
     else:
       let final = SYMBOLS[slots.reels[i]]
-      drawSymbol3D(final, Vector3(x: reelPos.x, y: reelPos.y, z: reelPos.z - 0.02), 0.35, White)
+      # Add a gentle rotation to stopped symbols
+      let idleRotation = sin(getTime() * 1.5 + i.float) * 0.02
+      drawSymbol3D(final, Vector3(x: reelPos.x, y: reelPos.y, z: reelPos.z - 0.02), 
+                   0.35, White, slots.symbolRotation[i] + idleRotation)
   let baseY = sin(slots.anticipation * PI * 4.0) * 0.02
   drawCube(Vector3(x: slots.position.x, y: slots.position.y + baseY, z: slots.position.z), 2.2, 0.2, 0.7, Maroon)
   let handleBase = Vector3(x: slots.position.x + 1.1, y: bodyPos.y - 0.3, z: slots.position.z)
@@ -176,9 +232,21 @@ proc update*(slots: Slots, deltaTime: float) =
   if slots.state == Spinning:
     var allStopped = true
     for i in 0..2:
+      # Update bounce effect
+      if slots.bounceOffset[i] != 0.0:
+        slots.bounceOffset[i] -= deltaTime * 0.4
+        if slots.bounceOffset[i] < 0.0:
+          slots.bounceOffset[i] = 0.0
+      
       if slots.spinProgress[i] < 1.0:
         let baseSpeed = 1.2 + i.float * 0.4
         slots.spinProgress[i] += deltaTime * baseSpeed
+        
+        # Update symbol rotation during spin (keep between 0 and 1)
+        slots.symbolRotation[i] += deltaTime * 5.0
+        if slots.symbolRotation[i] > 1.0:
+          slots.symbolRotation[i] = slots.symbolRotation[i] mod 1.0
+        
         if slots.spinProgress[i] < 0.7:
           slots.reelOffset[i] += deltaTime * 9.0  # Scroll speed
           if slots.reelOffset[i] >= 1.0:
@@ -197,6 +265,9 @@ proc update*(slots: Slots, deltaTime: float) =
           slots.spinProgress[i] = 1.0
           slots.reels[i] = slots.targetReels[i]
           slots.reelOffset[i] = 0.0
+          # Add bounce effect when reel stops
+          slots.bounceOffset[i] = 0.15
+          slots.symbolRotation[i] = 0.0  # Reset rotation
         allStopped = false
       else:
         slots.reelOffset[i] = 0.0
@@ -211,11 +282,12 @@ proc update*(slots: Slots, deltaTime: float) =
       if r0 == r1 and r1 == r2:
         slots.screenShake = 1.0
         slots.flashTimer = 0.5
-        for _ in 0..19:
+        # More particles for winning
+        for _ in 0..39:
           slots.particles.add((
             x: rand(1.0) - 0.5,
             y: rand(1.0),
-            life: rand(1.0) + 0.5
+            life: rand(1.0) + 1.0
           ))
 
   if slots.screenShake > 0.0:
@@ -285,6 +357,8 @@ proc play*(slots: Slots, player: Player): bool =
         slots.leverAngle = 0.0
         slots.spinProgress = [0.0, 0.0, 0.0]
         slots.reelOffset = [0.0, 0.0, 0.0]
+        slots.symbolRotation = [0.0, 0.0, 0.0]
+        slots.bounceOffset = [0.0, 0.0, 0.0]
         slots.moneyAwarded = false
         slots.moneyToAward = 0
         slots.moneyAwardedSoFar = 0
