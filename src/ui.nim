@@ -4,6 +4,8 @@ import utils, player
 proc drawHUD*(player: Player) =
   let moneyText = "Money: " & formatMoney(player.money)
   drawText(moneyText, 20'i32, 20'i32, 30'i32, Gold)
+  
+  # Crosshair
   let centerX = getScreenWidth() div 2
   let centerY = getScreenHeight() div 2
   drawCircle(centerX.int32, centerY.int32, 3, White)

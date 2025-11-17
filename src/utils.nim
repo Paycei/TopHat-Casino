@@ -33,6 +33,11 @@ proc distance2D*(a, b: Vector3): float =
 proc formatMoney*(amount: int): string =
   return "$" & $amount
 
+proc formatFloat*(value: float, precision: int = 2): string =
+  let multiplier = pow(10.0, precision.float)
+  let rounded = round(value * multiplier) / multiplier
+  return $rounded
+
 proc clamp*(value, minVal, maxVal: float): float =
   if value < minVal: return minVal
   if value > maxVal: return maxVal

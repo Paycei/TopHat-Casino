@@ -9,6 +9,12 @@ type
     pitch*: float
     money*: int
     speed*: float
+    velocity*: Vector3  # Physics velocity (X, Y, Z for full 3D movement)
+    isGrounded*: bool  # Whether player is on ground
+    gravity*: float  # Gravity constant
+    jumpForce*: float  # Jump velocity
+    groundLevel*: float  # Ground Y position
+    airControl*: float  # Movement control while airborne (0.0-1.0)
 
 proc newPlayer*(startPos: Vector3, startMoney: int): Player =
   result = Player()
@@ -17,6 +23,14 @@ proc newPlayer*(startPos: Vector3, startMoney: int): Player =
   result.yaw = 0.0
   result.pitch = 0.0
   result.speed = 5.0
+  
+  # Physics initialization
+  result.velocity = Vector3(x: 0, y: 0, z: 0)
+  result.gravity = 20.0  # Gravity acceleration
+  result.jumpForce = 8.0  # Jump velocity
+  result.groundLevel = 1.6  # Eye level height (1.6m above ground)
+  result.isGrounded = true
+  result.airControl = 0.3  # 30% movement control in air
   
   result.camera = Camera3D()
   result.camera.position = result.position
@@ -30,12 +44,15 @@ proc newPlayer*(startPos: Vector3, startMoney: int): Player =
   result.camera.projection = Perspective
 
 proc update*(player: Player, deltaTime: float) =
+  # Mouse look
   let mouseDelta = getMouseDelta()
   let sensitivity = 0.003
   
   player.yaw -= mouseDelta.x * sensitivity
   player.pitch -= mouseDelta.y * sensitivity
   player.pitch = clamp(player.pitch, -1.5, 1.5)
+  
+  # Calculate forward and right vectors
   let forward = Vector3(
     x: sin(player.yaw),
     y: 0,
@@ -47,6 +64,8 @@ proc update*(player: Player, deltaTime: float) =
     y: 0,
     z: sin(player.yaw)
   )
+  
+  # Movement input
   var moveDir = Vector3(x: 0, y: 0, z: 0)
   
   if isKeyDown(W):
@@ -61,13 +80,61 @@ proc update*(player: Player, deltaTime: float) =
   if isKeyDown(D):
     moveDir.x += right.x
     moveDir.z += right.z
+  
+  # Normalize horizontal movement
   let magnitude = sqrt(moveDir.x * moveDir.x + moveDir.z * moveDir.z)
   if magnitude > 0:
-    moveDir.x = (moveDir.x / magnitude) * player.speed * deltaTime
-    moveDir.z = (moveDir.z / magnitude) * player.speed * deltaTime
+    # Normalize direction
+    moveDir.x = moveDir.x / magnitude
+    moveDir.z = moveDir.z / magnitude
     
-    player.position.x += moveDir.x
-    player.position.z += moveDir.z
+    if player.isGrounded:
+      # On ground: directly set velocity to target speed
+      player.velocity.x = moveDir.x * player.speed
+      player.velocity.z = moveDir.z * player.speed
+    else:
+      # In air: only allow steering by adding small perpendicular forces
+      # This preserves momentum magnitude but allows direction changes
+      let currentSpeed = sqrt(player.velocity.x * player.velocity.x + player.velocity.z * player.velocity.z)
+      
+      # Smoothly interpolate velocity direction towards input direction
+      # but keep the current speed (or slowly decay it)
+      let airInfluence = player.airControl * 5.0 * deltaTime  # How much input affects direction
+      player.velocity.x = player.velocity.x * (1.0 - airInfluence) + moveDir.x * currentSpeed * airInfluence
+      player.velocity.z = player.velocity.z * (1.0 - airInfluence) + moveDir.z * currentSpeed * airInfluence
+  else:
+    # Apply friction when no input
+    player.velocity.x *= 0.9
+    player.velocity.z *= 0.9
+  
+  # Apply horizontal velocity
+  player.position.x += player.velocity.x * deltaTime
+  player.position.z += player.velocity.z * deltaTime
+  
+  # Jump input (no coyote time - must be grounded to jump)
+  if isKeyPressed(Space) and player.isGrounded:
+    player.velocity.y = player.jumpForce
+    player.isGrounded = false
+    # Horizontal velocity is preserved automatically from movement code above
+  
+  # Variable jump height - release space early for shorter jump
+  if isKeyReleased(Space) and player.velocity.y > 0:
+    player.velocity.y *= 0.5
+  
+  # Apply gravity
+  if not player.isGrounded:
+    player.velocity.y -= player.gravity * deltaTime
+  
+  # Apply vertical velocity
+  player.position.y += player.velocity.y * deltaTime
+  
+  # Ground collision
+  if player.position.y <= player.groundLevel:
+    player.position.y = player.groundLevel
+    player.velocity.y = 0
+    player.isGrounded = true
+  
+  # Update camera
   player.camera.position = player.position
   player.camera.target = Vector3(
     x: player.position.x + sin(player.yaw) * cos(player.pitch),
