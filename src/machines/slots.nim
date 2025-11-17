@@ -197,13 +197,44 @@ proc draw3D*(slots: Slots) =
   if slots.screenShake > 0.0:
     shakeOffset.x = (rand(1.0) - 0.5) * slots.screenShake * 0.1
     shakeOffset.y = (rand(1.0) - 0.5) * slots.screenShake * 0.1
+  
   let bodyPos = Vector3(
     x: slots.position.x + shakeOffset.x,
     y: slots.position.y + 1.0 + shakeOffset.y,
     z: slots.position.z + shakeOffset.z
   )
-  # Larger body to accommodate 3 rows with better spacing
-  drawCube(bodyPos, 1.8, 2.4, 0.5, DarkGray)
+  
+  # Main cabinet body - classic slot machine shape
+  let cabinetColor = Color(r: 139, g: 0, b: 0, a: 255)  # Dark red
+  let accentColor = Color(r: 184, g: 134, b: 11, a: 255)  # Dark goldenrod
+  
+  # Lower cabinet base
+  drawCube(Vector3(x: bodyPos.x, y: bodyPos.y - 0.8, z: bodyPos.z), 
+           1.6, 0.6, 0.6, cabinetColor)
+  drawCubeWires(Vector3(x: bodyPos.x, y: bodyPos.y - 0.8, z: bodyPos.z), 
+                1.6, 0.6, 0.6, Gold)
+  
+  # Middle section - where reels are
+  drawCube(Vector3(x: bodyPos.x, y: bodyPos.y, z: bodyPos.z), 
+           1.5, 1.8, 0.45, cabinetColor)
+  drawCubeWires(Vector3(x: bodyPos.x, y: bodyPos.y, z: bodyPos.z), 
+                1.5, 1.8, 0.45, Gold)
+  
+  # Top crown/marquee
+  drawCube(Vector3(x: bodyPos.x, y: bodyPos.y + 1.0, z: bodyPos.z), 
+           1.6, 0.3, 0.5, accentColor)
+  drawCubeWires(Vector3(x: bodyPos.x, y: bodyPos.y + 1.0, z: bodyPos.z), 
+                1.6, 0.3, 0.5, Gold)
+  
+  # Decorative corner pieces on top
+  for i in [-1, 1]:
+    drawCube(Vector3(x: bodyPos.x + i.float * 0.8, y: bodyPos.y + 1.15, z: bodyPos.z), 
+             0.15, 0.15, 0.15, Gold)
+  
+  # Screen bezel/frame around the reel area (smaller to match centered slots)
+  let screenFrameColor = Color(r: 30, g: 30, b: 30, a: 255)
+  drawCube(Vector3(x: bodyPos.x, y: bodyPos.y + 0.05, z: bodyPos.z - 0.22), 
+           1.05, 1.25, 0.04, screenFrameColor)
 
   if slots.winGlow > 0.0:
     let glowColor = Color(
@@ -212,22 +243,31 @@ proc draw3D*(slots: Slots) =
       b: 0,
       a: uint8(255.0 * slots.winGlow)
     )
-    drawCubeWires(bodyPos, 1.85, 2.45, 0.55, glowColor)
-
-  drawCubeWires(bodyPos, 1.8, 2.4, 0.5, Gold)
+    drawCubeWires(Vector3(x: bodyPos.x, y: bodyPos.y, z: bodyPos.z), 
+                  1.55, 1.85, 0.5, glowColor)
   
-  # Draw 3 columns x 3 rows with smaller, better-spaced boxes
+  # Draw 3 columns x 3 rows with even smaller, centered boxes
+  let slotWidth = 0.26      # Even smaller box width
+  let slotHeight = 0.32     # Even smaller box height
+  let colSpacing = 0.30     # Tighter horizontal spacing
+  let rowSpacing = 0.36     # Tighter vertical spacing
+  
+  # Calculate total width to center the grid
+  let totalWidth = colSpacing * 2.0  # Distance from first to last column
+  let startX = bodyPos.x - totalWidth / 2.0  # Center the grid
+  
   for col in 0..2:
     let bounceY = slots.bounceOffset[col]
     
     for row in 0..2:
       let reelPos = Vector3(
-        x: slots.position.x - 0.5 + col.float * 0.5,  # Reduced spacing from 0.6 to 0.5
-        y: bodyPos.y + 0.6 - row.float * 0.6 + slots.reelOffset[col] + shakeOffset.y + bounceY,  # Reduced from 0.7
-        z: slots.position.z - 0.26
+        x: startX + col.float * colSpacing,  # Centered positioning
+        y: bodyPos.y + 0.42 - row.float * rowSpacing + slots.reelOffset[col] + shakeOffset.y + bounceY,
+        z: slots.position.z - 0.24
       )
 
-      drawCube(reelPos, 0.42, 0.5, 0.02, Black)  # Reduced from 0.5, 0.6
+      # Even smaller symbol boxes
+      drawCube(reelPos, slotWidth, slotHeight, 0.02, Black)
       
       # Check if this position is part of a winning line
       var isWinningSymbol = false
@@ -246,7 +286,7 @@ proc draw3D*(slots: Slots) =
         Color(r: 255, g: uint8(50 + 205 * winGlow), b: 0, a: 255)
       else:
         Yellow
-      drawCubeWires(reelPos, 0.42, 0.5, 0.02, borderColor)  # Reduced from 0.5, 0.6
+      drawCubeWires(reelPos, slotWidth, slotHeight, 0.02, borderColor)
       
       let offset = slots.reelOffset[col]
       
@@ -256,20 +296,39 @@ proc draw3D*(slots: Slots) =
         let current = SYMBOLS[symbolIndex]
         let spinRotation = slots.spinProgress[col] * 2.0
         drawSymbol3D(current, Vector3(x: reelPos.x, y: reelPos.y, z: reelPos.z - 0.02), 
-                     0.23, White, spinRotation)  # Reduced from 0.28 to 0.23
+                     0.15, White, spinRotation)  # Even smaller symbols to fit
       else:
         let final = SYMBOLS[slots.reels[col][row]]
         let idleRotation = sin(getTime() * 1.5 + col.float + row.float) * 0.02
         let symbolColor = if isWinningSymbol: Gold else: White
         drawSymbol3D(final, Vector3(x: reelPos.x, y: reelPos.y, z: reelPos.z - 0.02), 
-                     0.23, symbolColor, slots.symbolRotation[col] + idleRotation)  # Reduced from 0.28 to 0.23
+                     0.15, symbolColor, slots.symbolRotation[col] + idleRotation)  # Even smaller symbols
+  # Decorative base platform with coin tray
   let baseY = sin(slots.anticipation * PI * 4.0) * 0.02
-  drawCube(Vector3(x: slots.position.x, y: slots.position.y + baseY, z: slots.position.z), 2.0, 0.2, 0.7, Maroon)  # Reduced width from 2.2 to 2.0
-  let handleBase = Vector3(x: slots.position.x + 1.1, y: bodyPos.y - 0.3, z: slots.position.z)
-  let handleTipY = handleBase.y + cos(slots.leverAngle) * 0.6
-  let handleTipX = handleBase.x + sin(slots.leverAngle) * 0.2
-  drawCylinder(handleBase, 0.05, 0.05, 0.6, 8, Red)
-  drawSphere(Vector3(x: handleTipX, y: handleTipY, z: handleBase.z), 0.15, Red)
+  drawCube(Vector3(x: slots.position.x, y: slots.position.y + baseY, z: slots.position.z), 
+           1.8, 0.15, 0.75, Maroon)
+  drawCubeWires(Vector3(x: slots.position.x, y: slots.position.y + baseY, z: slots.position.z), 
+                1.8, 0.15, 0.75, Gold)
+  
+  # Coin tray at front bottom
+  drawCube(Vector3(x: slots.position.x, y: slots.position.y + 0.1, z: slots.position.z - 0.38), 
+           0.8, 0.1, 0.15, Color(r: 50, g: 50, b: 50, a: 255))
+  drawCubeWires(Vector3(x: slots.position.x, y: slots.position.y + 0.1, z: slots.position.z - 0.38), 
+                0.8, 0.1, 0.15, Gray)
+  
+  # Side lever (smaller and more proportional)
+  let handleBase = Vector3(x: slots.position.x + 0.85, y: bodyPos.y - 0.4, z: slots.position.z)
+  let handleTipY = handleBase.y + cos(slots.leverAngle) * 0.5
+  let handleTipX = handleBase.x + sin(slots.leverAngle) * 0.15
+  
+  # Lever mount
+  drawCylinder(handleBase, 0.08, 0.08, 0.1, 8, Color(r: 80, g: 80, b: 80, a: 255))
+  # Lever arm
+  drawCylinder(handleBase, 0.04, 0.04, 0.5, 8, Red)
+  # Lever ball/grip
+  drawSphere(Vector3(x: handleTipX, y: handleTipY, z: handleBase.z), 0.12, Color(r: 200, g: 0, b: 0, a: 255))
+  
+  # Draw particles for win effects
   for particle in slots.particles:
     if particle.life > 0.0:
       let size = particle.life * 0.1
