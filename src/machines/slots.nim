@@ -7,8 +7,8 @@ type
   
   Slots* = ref object
     position*: Vector3
-    reels*: array[3, int]
-    targetReels*: array[3, int]
+    reels*: array[3, array[3, int]]  # 3 columns x 3 rows
+    targetReels*: array[3, array[3, int]]
     spinProgress*: array[3, float]
     reelOffset*: array[3, float]
     state*: SlotState
@@ -27,8 +27,9 @@ type
     particles*: seq[tuple[x, y, life: float]]
     symbolRotation*: array[3, float]  # Add rotation for each reel
     bounceOffset*: array[3, float]    # Add bounce effect when stopping
+    winningLines*: seq[array[3, tuple[col, row: int]]]  # Store winning line positions
 
-const SYMBOLS = ["7", "BAR", "🍒", "🍋", "⭐", "💎", "🔔"]
+const SYMBOLS = ["7", "BAR", "🍒", "🍋", "⭐", "💎", "🔔", "🍇", "🍊", "💰"]
 
 proc easeOutCubic(t: float): float =
   let t2 = 1.0 - t
@@ -37,8 +38,8 @@ proc easeOutCubic(t: float): float =
 proc newSlots*(pos: Vector3): Slots =
   result = Slots()
   result.position = pos
-  result.reels = [0, 0, 0]
-  result.targetReels = [0, 0, 0]
+  result.reels = [[0, 0, 0], [0, 0, 0], [0, 0, 0]]
+  result.targetReels = [[0, 0, 0], [0, 0, 0], [0, 0, 0]]
   result.spinProgress = [0.0, 0.0, 0.0]
   result.reelOffset = [0.0, 0.0, 0.0]
   result.state = Idle
@@ -57,6 +58,7 @@ proc newSlots*(pos: Vector3): Slots =
   result.particles = @[]
   result.symbolRotation = [0.0, 0.0, 0.0]
   result.bounceOffset = [0.0, 0.0, 0.0]
+  result.winningLines = @[]
 
 proc drawSymbol3D(symbol: string, pos: Vector3, size: float, color: Color, rotation: float = 0.0) =
   pushMatrix()
@@ -126,6 +128,60 @@ proc drawSymbol3D(symbol: string, pos: Vector3, size: float, color: Color, rotat
     # Shine effect on bell
     drawSphere(Vector3(x: pos.x - size * 0.1, y: pos.y + size * 0.1, z: pos.z), 
                size * 0.05, Color(r: 255, g: 255, b: 200, a: 255))
+  of "🍇":
+    # Draw grape bunch
+    let purple = Color(r: 138, g: 43, b: 226, a: 255)
+    let darkPurple = Color(r: 100, g: 20, b: 150, a: 255)
+    
+    # Multiple rows of grapes
+    for row in 0..2:
+      let numGrapes = 3 - row
+      for i in 0..<numGrapes:
+        let xOffset = (i.float - (numGrapes.float - 1.0) * 0.5) * size * 0.15
+        let yOffset = -row.float * size * 0.13
+        drawSphere(Vector3(x: pos.x + xOffset, y: pos.y + yOffset, z: pos.z), 
+                   size * 0.12, if row == 0: purple else: darkPurple)
+    
+    # Stem
+    drawCube(Vector3(x: pos.x, y: pos.y + size * 0.22, z: pos.z), 
+             size * 0.05, size * 0.12, size * 0.05, Green)
+  of "🍊":
+    # Draw orange
+    let orange = Color(r: 255, g: 165, b: 0, a: 255)
+    let darkOrange = Color(r: 255, g: 140, b: 0, a: 255)
+    
+    # Main orange body (slightly squashed sphere)
+    for i in -2..2:
+      let offset = i.float * 0.06 * size
+      let radius = size * 0.22 * (1.0 - abs(i.float) / 3.0)
+      let color = if i == 0: orange else: darkOrange
+      drawSphere(Vector3(x: pos.x + offset, y: pos.y, z: pos.z), radius, color)
+    
+    # Small green stem/leaf on top
+    drawSphere(Vector3(x: pos.x, y: pos.y + size * 0.25, z: pos.z), size * 0.06, Green)
+  of "💰":
+    # Draw money bag
+    let bagBrown = Color(r: 139, g: 90, b: 43, a: 255)
+    let lightBrown = Color(r: 160, g: 110, b: 60, a: 255)
+    
+    # Bag body (bottom part)
+    drawSphere(Vector3(x: pos.x, y: pos.y - size * 0.08, z: pos.z), size * 0.25, bagBrown)
+    
+    # Bag top (tied part)
+    drawCube(Vector3(x: pos.x, y: pos.y + size * 0.12, z: pos.z), 
+             size * 0.18, size * 0.15, size * 0.1, lightBrown)
+    
+    # String/rope on top
+    drawCube(Vector3(x: pos.x, y: pos.y + size * 0.22, z: pos.z), 
+             size * 0.22, size * 0.04, size * 0.04, Color(r: 80, g: 60, b: 30, a: 255))
+    
+    # Dollar sign on bag
+    drawCube(Vector3(x: pos.x, y: pos.y - size * 0.08, z: pos.z - 0.01), 
+             size * 0.08, size * 0.2, size * 0.01, Gold)
+    drawCube(Vector3(x: pos.x, y: pos.y - size * 0.15, z: pos.z - 0.01), 
+             size * 0.12, size * 0.04, size * 0.01, Gold)
+    drawCube(Vector3(x: pos.x, y: pos.y, z: pos.z - 0.01), 
+             size * 0.12, size * 0.04, size * 0.01, Gold)
   else:
     drawCube(pos, size, size, size * 0.1, color)
   
@@ -146,7 +202,8 @@ proc draw3D*(slots: Slots) =
     y: slots.position.y + 1.0 + shakeOffset.y,
     z: slots.position.z + shakeOffset.z
   )
-  drawCube(bodyPos, 2.0, 2.0, 0.5, DarkGray)
+  # Larger body to accommodate 3 rows with better spacing
+  drawCube(bodyPos, 1.8, 2.4, 0.5, DarkGray)
 
   if slots.winGlow > 0.0:
     let glowColor = Color(
@@ -155,45 +212,59 @@ proc draw3D*(slots: Slots) =
       b: 0,
       a: uint8(255.0 * slots.winGlow)
     )
-    drawCubeWires(bodyPos, 2.05, 2.05, 0.55, glowColor)
+    drawCubeWires(bodyPos, 1.85, 2.45, 0.55, glowColor)
 
-  drawCubeWires(bodyPos, 2.0, 2.0, 0.5, Gold)
-  for i in 0..2:
-    let bounceY = slots.bounceOffset[i]
-    let reelPos = Vector3(
-      x: slots.position.x - 0.6 + i.float * 0.6,
-      y: bodyPos.y + 0.3 + slots.reelOffset[i] + shakeOffset.y + bounceY,
-      z: slots.position.z - 0.26
-    )
-
-    drawCube(reelPos, 0.5, 0.8, 0.02, Black)
-    let borderColor = if slots.state == Spinning:
-      let spinGlow = sin(getTime() * 10.0) * 0.3 + 0.7
-      Color(r: 255, g: 215, b: 0, a: uint8(255.0 * spinGlow))
-    else:
-      Yellow
-    drawCubeWires(reelPos, 0.5, 0.8, 0.02, borderColor)
-    let offset = slots.reelOffset[i]
+  drawCubeWires(bodyPos, 1.8, 2.4, 0.5, Gold)
+  
+  # Draw 3 columns x 3 rows with smaller, better-spaced boxes
+  for col in 0..2:
+    let bounceY = slots.bounceOffset[col]
     
-    if slots.spinProgress[i] < 1.0:
-      let current = SYMBOLS[slots.reels[i]]
-      let next = SYMBOLS[(slots.reels[i] + 1) mod SYMBOLS.len]
-      let currentY = reelPos.y + offset * 0.8
-      let spinRotation = slots.spinProgress[i] * 2.0  # Rotate while spinning
-      drawSymbol3D(current, Vector3(x: reelPos.x, y: currentY, z: reelPos.z - 0.02), 
-                   0.35, White, spinRotation)
-      let nextY = reelPos.y - (1.0 - offset) * 0.8
-      let alpha = uint8(255.0 * offset)
-      drawSymbol3D(next, Vector3(x: reelPos.x, y: nextY, z: reelPos.z - 0.02), 
-                   0.35, Color(r: 255, g: 255, b: 255, a: alpha), spinRotation)
-    else:
-      let final = SYMBOLS[slots.reels[i]]
-      # Add a gentle rotation to stopped symbols
-      let idleRotation = sin(getTime() * 1.5 + i.float) * 0.02
-      drawSymbol3D(final, Vector3(x: reelPos.x, y: reelPos.y, z: reelPos.z - 0.02), 
-                   0.35, White, slots.symbolRotation[i] + idleRotation)
+    for row in 0..2:
+      let reelPos = Vector3(
+        x: slots.position.x - 0.5 + col.float * 0.5,  # Reduced spacing from 0.6 to 0.5
+        y: bodyPos.y + 0.6 - row.float * 0.6 + slots.reelOffset[col] + shakeOffset.y + bounceY,  # Reduced from 0.7
+        z: slots.position.z - 0.26
+      )
+
+      drawCube(reelPos, 0.42, 0.5, 0.02, Black)  # Reduced from 0.5, 0.6
+      
+      # Check if this position is part of a winning line
+      var isWinningSymbol = false
+      for line in slots.winningLines:
+        for pos in line:
+          if pos.col == col and pos.row == row:
+            isWinningSymbol = true
+            break
+      
+      let borderColor = if slots.state == Spinning:
+        let spinGlow = sin(getTime() * 10.0) * 0.3 + 0.7
+        Color(r: 255, g: 215, b: 0, a: uint8(255.0 * spinGlow))
+      elif isWinningSymbol and slots.state == Result:
+        # Highlight winning symbols
+        let winGlow = (sin(getTime() * 8.0) + 1.0) * 0.5
+        Color(r: 255, g: uint8(50 + 205 * winGlow), b: 0, a: 255)
+      else:
+        Yellow
+      drawCubeWires(reelPos, 0.42, 0.5, 0.02, borderColor)  # Reduced from 0.5, 0.6
+      
+      let offset = slots.reelOffset[col]
+      
+      if slots.spinProgress[col] < 1.0:
+        # During spinning, show scrolling symbols
+        let symbolIndex = (slots.reels[col][row] + int(offset * 3.0)) mod SYMBOLS.len
+        let current = SYMBOLS[symbolIndex]
+        let spinRotation = slots.spinProgress[col] * 2.0
+        drawSymbol3D(current, Vector3(x: reelPos.x, y: reelPos.y, z: reelPos.z - 0.02), 
+                     0.23, White, spinRotation)  # Reduced from 0.28 to 0.23
+      else:
+        let final = SYMBOLS[slots.reels[col][row]]
+        let idleRotation = sin(getTime() * 1.5 + col.float + row.float) * 0.02
+        let symbolColor = if isWinningSymbol: Gold else: White
+        drawSymbol3D(final, Vector3(x: reelPos.x, y: reelPos.y, z: reelPos.z - 0.02), 
+                     0.23, symbolColor, slots.symbolRotation[col] + idleRotation)  # Reduced from 0.28 to 0.23
   let baseY = sin(slots.anticipation * PI * 4.0) * 0.02
-  drawCube(Vector3(x: slots.position.x, y: slots.position.y + baseY, z: slots.position.z), 2.2, 0.2, 0.7, Maroon)
+  drawCube(Vector3(x: slots.position.x, y: slots.position.y + baseY, z: slots.position.z), 2.0, 0.2, 0.7, Maroon)  # Reduced width from 2.2 to 2.0
   let handleBase = Vector3(x: slots.position.x + 1.1, y: bodyPos.y - 0.3, z: slots.position.z)
   let handleTipY = handleBase.y + cos(slots.leverAngle) * 0.6
   let handleTipX = handleBase.x + sin(slots.leverAngle) * 0.2
@@ -251,7 +322,9 @@ proc update*(slots: Slots, deltaTime: float) =
           slots.reelOffset[i] += deltaTime * 9.0  # Scroll speed
           if slots.reelOffset[i] >= 1.0:
             slots.reelOffset[i] = 0.0
-            slots.reels[i] = (slots.reels[i] + 1) mod SYMBOLS.len
+            # Cycle all 3 rows
+            for row in 0..2:
+              slots.reels[i][row] = (slots.reels[i][row] + 1) mod SYMBOLS.len
         else:
           let easedProgress = 0.7 + easeOutCubic((slots.spinProgress[i] - 0.7) / 0.3) * 0.3
           slots.spinProgress[i] = min(easedProgress, 1.0)
@@ -259,7 +332,8 @@ proc update*(slots: Slots, deltaTime: float) =
           slots.reelOffset[i] += deltaTime * 8.0 * slowdownFactor
           if slots.reelOffset[i] >= 1.0:
             slots.reelOffset[i] = 0.0
-            slots.reels[i] = (slots.reels[i] + 1) mod SYMBOLS.len
+            for row in 0..2:
+              slots.reels[i][row] = (slots.reels[i][row] + 1) mod SYMBOLS.len
 
         if slots.spinProgress[i] >= 1.0:
           slots.spinProgress[i] = 1.0
@@ -275,11 +349,53 @@ proc update*(slots: Slots, deltaTime: float) =
     if allStopped:
       slots.state = Result
       slots.timer = 0.0
-
-      let r0 = slots.reels[0]
-      let r1 = slots.reels[1]
-      let r2 = slots.reels[2]
-      if r0 == r1 and r1 == r2:
+      slots.winningLines = @[]
+      
+      # Check all possible winning lines (8 lines total)
+      var hasWin = false
+      
+      # Horizontal lines (3 lines)
+      for row in 0..2:
+        if slots.reels[0][row] == slots.reels[1][row] and 
+           slots.reels[1][row] == slots.reels[2][row]:
+          hasWin = true
+          slots.winningLines.add([
+            (col: 0, row: row),
+            (col: 1, row: row),
+            (col: 2, row: row)
+          ])
+      
+      # Vertical lines (3 lines)
+      for col in 0..2:
+        if slots.reels[col][0] == slots.reels[col][1] and 
+           slots.reels[col][1] == slots.reels[col][2]:
+          hasWin = true
+          slots.winningLines.add([
+            (col: col, row: 0),
+            (col: col, row: 1),
+            (col: col, row: 2)
+          ])
+      
+      # Diagonal lines (2 lines)
+      if slots.reels[0][0] == slots.reels[1][1] and 
+         slots.reels[1][1] == slots.reels[2][2]:
+        hasWin = true
+        slots.winningLines.add([
+          (col: 0, row: 0),
+          (col: 1, row: 1),
+          (col: 2, row: 2)
+        ])
+      
+      if slots.reels[0][2] == slots.reels[1][1] and 
+         slots.reels[1][1] == slots.reels[2][0]:
+        hasWin = true
+        slots.winningLines.add([
+          (col: 0, row: 2),
+          (col: 1, row: 1),
+          (col: 2, row: 0)
+        ])
+      
+      if hasWin:
         slots.screenShake = 1.0
         slots.flashTimer = 0.5
         # More particles for winning
@@ -323,7 +439,8 @@ proc play*(slots: Slots, player: Player): bool =
       messages.add("")
       messages.add("[1] $5   [2] $25   [3] $50")
       messages.add("")
-      messages.add("Win: 3 same = 10x, 2 same = 2x")
+      messages.add("Win: Line = 20x bet")
+      messages.add("8 lines: 3 rows, 3 cols, 2 diagonals")
       messages.add("[ESC] Back")
 
       if isKeyPressed(One):
@@ -364,8 +481,11 @@ proc play*(slots: Slots, player: Player): bool =
         slots.moneyAwardedSoFar = 0
         slots.moneyTimer = 0.0
         slots.particles = @[]
-        for i in 0..2:
-          slots.targetReels[i] = rand(SYMBOLS.len - 1)
+        slots.winningLines = @[]
+        # Generate random target for each position in 3x3 grid
+        for col in 0..2:
+          for row in 0..2:
+            slots.targetReels[col][row] = rand(SYMBOLS.len - 1)
 
     drawMinigameUI("SLOTS", player, messages)
 
@@ -392,28 +512,26 @@ proc play*(slots: Slots, player: Player): bool =
     var messages: seq[string] = @[]
     
     if slots.flashTimer > 0.0 and (int(slots.flashTimer * 10.0) mod 2 == 0):
-      messages.add("=== ⭐ JACKPOT!!! ⭐ ===")
+      messages.add("=== ⭐ WINNER!!! ⭐ ===")
     else:
       messages.add("=== RESULT ===")
     
     messages.add("")
     
     if not slots.moneyAwarded:
-      let r0 = slots.reels[0]
-      let r1 = slots.reels[1]
-      let r2 = slots.reels[2]
+      let numLines = slots.winningLines.len
       
-      if r0 == r1 and r1 == r2:
-        slots.moneyToAward = slots.bet * 10
-        messages.add("⭐ JACKPOT! THREE OF A KIND! ⭐")
-        messages.add("Won: " & formatMoney(slots.moneyToAward))
-      elif r0 == r1 or r1 == r2 or r0 == r2:
-        slots.moneyToAward = slots.bet * 2
-        messages.add("✓ WIN! TWO OF A KIND!")
+      if numLines > 0:
+        # Multiple of 10x per line
+        slots.moneyToAward = slots.bet * numLines * 10
+        if numLines == 1:
+          messages.add("⭐ 1 WINNING LINE! ⭐")
+        else:
+          messages.add("⭐⭐ " & $numLines & " WINNING LINES! ⭐⭐")
         messages.add("Won: " & formatMoney(slots.moneyToAward))
       else:
         slots.moneyToAward = 0
-        messages.add("✗ NO MATCH")
+        messages.add("✗ NO WINNING LINES")
         messages.add("Lost: " & formatMoney(slots.bet))
       slots.moneyAwarded = true
     else:
@@ -436,18 +554,16 @@ proc play*(slots: Slots, player: Player): bool =
         player.addMoney(increment)
         slots.moneyAwardedSoFar += increment
       
-      let r0 = slots.reels[0]
-      let r1 = slots.reels[1]
-      let r2 = slots.reels[2]
+      let numLines = slots.winningLines.len
       
-      if r0 == r1 and r1 == r2:
-        messages.add("⭐ JACKPOT! THREE OF A KIND! ⭐")
-        messages.add("Won: " & formatMoney(slots.moneyToAward))
-      elif r0 == r1 or r1 == r2 or r0 == r2:
-        messages.add("✓ WIN! TWO OF A KIND!")
+      if numLines > 0:
+        if numLines == 1:
+          messages.add("⭐ 1 WINNING LINE! ⭐")
+        else:
+          messages.add("⭐⭐ " & $numLines & " WINNING LINES! ⭐⭐")
         messages.add("Won: " & formatMoney(slots.moneyToAward))
       else:
-        messages.add("✗ NO MATCH")
+        messages.add("✗ NO WINNING LINES")
         messages.add("Lost: " & formatMoney(slots.bet))
     
     messages.add("")
