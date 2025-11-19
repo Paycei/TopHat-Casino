@@ -1,5 +1,5 @@
 import raylib
-import player, casino, ui
+import player, casino, ui, mirror
 import machines/roulette, machines/slots, machines/blackjack
 
 type
@@ -58,6 +58,8 @@ proc update*(game: Game) =
   of Playing:
     game.player.update(deltaTime)
     game.casino.update(deltaTime)
+    game.casino.updateMirrors(game.player.camera)
+    
     if game.exitInputCooldown > 0.0:
       game.exitInputCooldown -= deltaTime
       if game.exitInputCooldown < 0.0: game.exitInputCooldown = 0.0
@@ -69,11 +71,24 @@ proc update*(game: Game) =
     let (nearestMachine, distance) = game.casino.getNearestMachine(game.player.position)
     
     if distance < game.interactionDistance:
+      # Render mirror reflections first
+      for mirror in game.casino.mirrors:
+        beginTextureMode(mirror.renderTexture)
+        clearBackground(Black)
+        beginMode3D(mirror.reflectionCamera)
+        game.casino.drawEnvironment()
+        game.casino.drawMachines()
+        game.player.drawPlayerModel()
+        endMode3D()
+        endTextureMode()
+      
       clearBackground(Black)
       
       beginMode3D(game.player.camera)
       game.casino.drawEnvironment()
       game.casino.drawMachines()
+      game.casino.drawMirrors()
+      game.player.drawPlayerModel()
       endMode3D()
       
       drawHUD(game.player)
@@ -132,11 +147,24 @@ proc update*(game: Game) =
         game.cameraTransition = 0.0
         enableCursor()
     else:
+      # Render mirror reflections first
+      for mirror in game.casino.mirrors:
+        beginTextureMode(mirror.renderTexture)
+        clearBackground(Black)
+        beginMode3D(mirror.reflectionCamera)
+        game.casino.drawEnvironment()
+        game.casino.drawMachines()
+        game.player.drawPlayerModel()
+        endMode3D()
+        endTextureMode()
+      
       clearBackground(Black)
       
       beginMode3D(game.player.camera)
       game.casino.drawEnvironment()
       game.casino.drawMachines()
+      game.casino.drawMirrors()
+      game.player.drawPlayerModel()
       endMode3D()
       
       drawHUD(game.player)
@@ -160,11 +188,26 @@ proc update*(game: Game) =
         z: game.originalCameraTarget.z + (game.targetCameraTarget.z - game.originalCameraTarget.z) * eased
       )
     
+    game.casino.updateMirrors(game.player.camera)
+    
+    # Render mirror reflections first
+    for mirror in game.casino.mirrors:
+      beginTextureMode(mirror.renderTexture)
+      clearBackground(Black)
+      beginMode3D(mirror.reflectionCamera)
+      game.casino.drawEnvironment()
+      game.casino.drawMachines()
+      game.player.drawPlayerModel()
+      endMode3D()
+      endTextureMode()
+    
     clearBackground(Black)
     
     beginMode3D(game.player.camera)
     game.casino.drawEnvironment()
     game.casino.drawMachines()
+    game.casino.drawMirrors()
+    game.player.drawPlayerModel()
     endMode3D()
     
     var finished = false
@@ -206,10 +249,25 @@ proc update*(game: Game) =
         disableCursor()
   
   of Paused:
+    game.casino.updateMirrors(game.player.camera)
+    
+    # Render mirror reflections
+    for mirror in game.casino.mirrors:
+      beginTextureMode(mirror.renderTexture)
+      clearBackground(Black)
+      beginMode3D(mirror.reflectionCamera)
+      game.casino.drawEnvironment()
+      game.casino.drawMachines()
+      game.player.drawPlayerModel()
+      endMode3D()
+      endTextureMode()
+    
     clearBackground(Black)
     beginMode3D(game.player.camera)
     game.casino.drawEnvironment()
     game.casino.drawMachines()
+    game.casino.drawMirrors()
+    game.player.drawPlayerModel()
     endMode3D()
     let screenWidth = getScreenWidth()
     let screenHeight = getScreenHeight()

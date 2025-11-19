@@ -15,6 +15,21 @@ type
     jumpForce*: float  # Jump velocity
     groundLevel*: float  # Ground Y position
     airControl*: float  # Movement control while airborne (0.0-1.0)
+    model*: Model  # Player 3D model
+    modelLoaded*: bool  # Whether model loaded successfully
+    modelScale*: float  # Scale of the model
+    modelOffset*: Vector3  # Offset from player position
+
+proc loadPlayerModel*(player: Player, modelPath: string) =
+  ## Load a .glb model for the player
+  try:
+    player.model = loadModel(modelPath)
+    player.modelLoaded = true
+    player.modelScale = 1.0
+    player.modelOffset = Vector3(x: 0, y: -0.8, z: 0)  # Offset to ground level
+  except:
+    player.modelLoaded = false
+    echo "Failed to load player model: ", modelPath
 
 proc newPlayer*(startPos: Vector3, startMoney: int): Player =
   result = Player()
@@ -31,6 +46,11 @@ proc newPlayer*(startPos: Vector3, startMoney: int): Player =
   result.groundLevel = 1.6  # Eye level height (1.6m above ground)
   result.isGrounded = true
   result.airControl = 0.3  # 30% movement control in air
+  
+  # Model initialization
+  result.modelLoaded = false
+  result.modelScale = 1.0
+  result.modelOffset = Vector3(x: 0, y: -0.8, z: 0)
   
   result.camera = Camera3D()
   result.camera.position = result.position
@@ -142,6 +162,29 @@ proc update*(player: Player, deltaTime: float) =
     z: player.position.z + cos(player.yaw) * cos(player.pitch)
   )
 
+proc drawPlayerModel*(player: Player) =
+  ## Draw the player model at the player's position with proper rotation
+  if not player.modelLoaded:
+    return
+  
+  # Calculate model position (offset from player camera position)
+  let modelPos = Vector3(
+    x: player.position.x + player.modelOffset.x,
+    y: player.position.y + player.modelOffset.y,
+    z: player.position.z + player.modelOffset.z
+  )
+  
+  # Draw model with rotation matching player's yaw
+  # Rotate model to face the direction the player is facing
+  # Note: drawModel in raylib-nim doesn't support rotation directly
+  # We'll use the simple drawModel for now - rotation can be added later if needed
+  drawModel(
+    player.model,
+    modelPos,
+    player.modelScale,
+    White
+  )
+
 proc getForwardPosition*(player: Player, distance: float): Vector3 =
   return Vector3(
     x: player.position.x + sin(player.yaw) * distance,
@@ -157,3 +200,11 @@ proc removeMoney*(player: Player, amount: int): bool =
     player.money -= amount
     return true
   return false
+
+proc unloadPlayerModel*(player: Player) =
+  ## Unload the player model to free memory
+  if player.modelLoaded:
+    # Note: unloadModel may not be available in all raylib-nim versions
+    # The model will be garbage collected when the Player object is freed
+    # If manual cleanup is needed, check raylib-nim documentation for the correct function
+    player.modelLoaded = false

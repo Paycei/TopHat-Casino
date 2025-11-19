@@ -1,5 +1,6 @@
-import raylib, utils
+import raylib, utils, math
 import machines/roulette, machines/slots, machines/blackjack
+import mirror
 
 type
   MachineType* = enum
@@ -15,10 +16,14 @@ type
     roulette*: Roulette
     slots*: Slots
     blackjack*: Blackjack
+    mirrors*: seq[Mirror]  # Mirrors in the casino
 
 proc newCasino*(): Casino =
   result = Casino()
   result.machines = @[]
+  result.mirrors = @[]
+  
+  # Setup machines
   let roulettePos = Vector3(x: -5.0, y: 0.0, z: 0.0)
   result.roulette = newRoulette(roulettePos)
   result.machines.add(Machine(
@@ -39,6 +44,23 @@ proc newCasino*(): Casino =
     position: blackjackPos,
     machineType: BlackjackM,
     bounds: newBoundingBox(blackjackPos, Vector3(x: 4.0, y: 3.0, z: 3.0))
+  ))
+  
+  # Add mirrors to the casino
+  # Mirror on the back wall (facing forward/south)
+  result.mirrors.add(newMirror(
+    Vector3(x: 0.0, y: 2.5, z: -9.8),  # On back wall
+    0.0,  # Facing south (toward positive Z)
+    4.0,  # Width
+    3.0   # Height
+  ))
+  
+  # Mirror on the right wall (facing left/west)
+  result.mirrors.add(newMirror(
+    Vector3(x: 14.8, y: 2.5, z: 0.0),  # On right wall
+    PI / 2.0,  # Facing west (toward negative X)
+    4.0,
+    3.0
   ))
 
 proc drawEnvironment*(casino: Casino) =
@@ -84,9 +106,19 @@ proc drawMachines*(casino: Casino) =
 
     drawCube(labelPos, 2.0, 0.3, 0.1, Gold)
 
+proc drawMirrors*(casino: Casino) =
+  ## Draw all mirrors with their reflections
+  for mirror in casino.mirrors:
+    mirror.drawMirror()
+
 proc update*(casino: Casino, deltaTime: float) =
   casino.roulette.update(deltaTime)
   casino.slots.update(deltaTime)
+
+proc updateMirrors*(casino: Casino, playerCamera: Camera3D) =
+  ## Update reflection cameras for all mirrors
+  for mirror in casino.mirrors:
+    mirror.updateReflectionCamera(playerCamera)
 
 proc getNearestMachine*(casino: Casino, playerPos: Vector3): tuple[machine: Machine, distance: float] =
   var nearest: Machine
@@ -104,3 +136,8 @@ proc getNearestMachine*(casino: Casino, playerPos: Vector3): tuple[machine: Mach
     return (nearest, minDistance)
   else:
     return (nearest, minDistance)
+
+proc unloadCasino*(casino: Casino) =
+  ## Cleanup casino resources
+  for mirror in casino.mirrors:
+    mirror.unloadMirror()
